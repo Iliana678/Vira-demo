@@ -49,58 +49,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 # --- 权限检查逻辑 ---
-def check_password():
-    """验证用户密码，并应用高级感渐变 UI"""
-    def password_entered():
-        # 从 Streamlit Secrets 或环境变量读取，不硬编码
-        _correct = (
-            st.secrets.get("ACCESS_KEY")
-            or os.getenv("ACCESS_KEY", "")
-        )
-        if _correct and st.session_state["password"] == _correct:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
+# --- 业务代码入口（邮箱登录鉴权在 _render_auth_page 中处理）---
 
-    if not st.session_state.get("password_correct"):
-        # 注入你选中的“流光紫色”渐变样式
-        st.markdown("""
-            <style>
-            .stApp {
-                background: radial-gradient(circle at top left, #E3D2FF 0%, #F8FAFC 50%, #A7C0FF 100%) !important;
-            }
-            .login-card {
-                background: rgba(255, 255, 255, 0.3);
-                backdrop-filter: blur(20px);
-                padding: 40px;
-                border-radius: 24px;
-                border: 1px solid rgba(255, 255, 255, 0.5);
-                text-align: center;
-                margin: 100px auto;
-                max-width: 450px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-            }
-            </style>
-            <div class="login-card">
-                <h1 style="color: #1E293B; font-weight: 800;">🔍 VIRA</h1>
-                <p style="color: #64748B;">爆款侦察兵正在待命，请输入暗号进入系统</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.text_input("Access Key", type="password", on_change=password_entered, key="password")
-            if st.session_state.get("password_correct") == False:
-                st.error("😕 暗号不对哦，请重新输入")
-        return False
-    return True
-
-# 安全拦截闸门：密码不对就地停止，不加载后续任何 Agent 和逻辑
-if not check_password():
-    st.stop()
-
-# --- 后续就是你原本的业务代码 (无需缩进) ---
 # ══════════════════════════════════════════════════════════════════════════════
 # HEAD 注入：meta + 字体预连接 + 非阻塞字体加载
 # 【Lighthouse 优化】:
@@ -926,32 +876,24 @@ def _render_auth_page() -> None:
     # ── 注册表单 ────────────────────────────────────────────────────────────
     else:
         with st.form("vira_signup_form", clear_on_submit=False):
-            _name   = st.text_input("昵称（可选）",   placeholder="你的名字")
-            _email  = st.text_input("邮箱地址 *",    placeholder="name@example.com")
-            _pwd    = st.text_input("密码 *",        placeholder="至少 6 位", type="password")
-            _pwd2   = st.text_input("确认密码 *",    placeholder="再输入一次", type="password")
-            _invite = st.text_input("邀请码 *",      placeholder="请联系管理员获取")
-            _sub    = st.form_submit_button(
-                "注册账户 →", use_container_width=True, type="primary"
+            _name  = st.text_input("昵称（可选）",  placeholder="你的名字")
+            _email = st.text_input("邮箱地址 *",   placeholder="name@example.com")
+            _pwd   = st.text_input("密码 *",       placeholder="至少 6 位", type="password")
+            _pwd2  = st.text_input("确认密码 *",   placeholder="再输入一次", type="password")
+            _sub   = st.form_submit_button(
+                "注册账户 →  （免费获得 5 次分析额度）", use_container_width=True, type="primary"
             )
         if _sub:
-            # 校验邀请码（从 Secrets 或环境变量读取，不写死）
-            _valid_invite = (
-                st.secrets.get("INVITE_CODE")
-                or os.getenv("INVITE_CODE", "")
-            )
             if not _email or not _pwd:
                 _msg_slot.error("请填写邮箱和密码")
             elif _pwd != _pwd2:
                 _msg_slot.error("两次密码不一致")
-            elif not _valid_invite or _invite.strip() != _valid_invite:
-                _msg_slot.error("❌ 邀请码不正确，请联系管理员获取")
             else:
                 try:
                     from services.auth import register as _auth_reg
                     _ok, _msg = _auth_reg(_email, _pwd, _name)
                     if _ok:
-                        _msg_slot.success("✅ 注册成功，请登录")
+                        _msg_slot.success("✅ 注册成功！已赠送 5 次免费分析额度，请登录")
                         st.session_state.auth_mode = "login"
                         st.rerun()
                     else:
@@ -1192,15 +1134,22 @@ def _render_strategy_card(wf) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
-    # ── 用户信息 + 退出登录 ────────────────────────────────────────────────────
+    # ── 用户信息 + 积分 + 退出登录 ───────────────────────────────────────────
     _u = st.session_state.get("user_info") or {}
     _display = _u.get("display_name") or _u.get("email", "用户")
     _email_s = _u.get("email", "")
+    # 从数据库实时读取积分（保证准确，不依赖 session_state 缓存）
+    try:
+        from services.auth import get_credits as _get_credits
+        _credits = _get_credits(_email_s) if _email_s else 0
+    except Exception:
+        _credits = _u.get("credits", 0)
+    _credits_color = "#22C55E" if _credits > 2 else "#F59E0B" if _credits > 0 else "#EF4444"
+    _credits_label = f"{_credits} 次" if _credits > 0 else "已用完"
     st.markdown(f"""
-<div style="display:flex;align-items:center;justify-content:space-between;
-            padding:8px 0 12px;border-bottom:1px solid rgba(139,92,246,.10);
+<div style="padding:8px 0 12px;border-bottom:1px solid rgba(139,92,246,.10);
             margin-bottom:12px;">
-  <div style="display:flex;align-items:center;gap:8px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <div style="width:30px;height:30px;border-radius:8px;flex-shrink:0;
                 background:linear-gradient(135deg,#6366F1,#A855F7);
                 display:flex;align-items:center;justify-content:center;
@@ -1212,6 +1161,11 @@ with st.sidebar:
                   line-height:1.3;">{_display}</div>
       <div style="font-size:10px;color:#3D4F68;">{_email_s}</div>
     </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;
+              background:rgba(99,102,241,.08);border-radius:8px;padding:6px 10px;">
+    <span style="font-size:11px;color:#94A3B8;">剩余分析次数</span>
+    <span style="font-size:13px;font-weight:800;color:{_credits_color};">{_credits_label}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1804,8 +1758,28 @@ if not st.session_state.workflow_result:
         if not st.session_state.api_key:
             st.warning("⚠️ 请在左侧侧边栏填入 OpenAI API Key")
         else:
+            # ── 积分检查 ──────────────────────────────────────────────────────
+            _cur_email = (st.session_state.get("user_info") or {}).get("email", "")
+            try:
+                from services.auth import get_credits as _gc
+                _cur_credits = _gc(_cur_email) if _cur_email else 0
+            except Exception:
+                _cur_credits = 1  # 读取失败时放行，避免误拦截
+            if _cur_credits <= 0:
+                st.error("🔒 分析次数已用完")
+                st.markdown("""
+<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);
+            border-radius:12px;padding:16px 20px;margin-top:8px;">
+  <div style="font-size:15px;font-weight:700;color:#FCA5A5;margin-bottom:6px;">
+    🎯 喜欢 VIRA？申请更多次数
+  </div>
+  <div style="font-size:12px;color:#94A3B8;line-height:1.7;">
+    发送邮件至 <b style="color:#E2E8F0;">hi@vira.ai</b> 告诉我们你的使用场景，<br>
+    我们会在 24 小时内为你补充额度。
+  </div>
+</div>""", unsafe_allow_html=True)
             # ========== 🚀 批量分析核心执行逻辑 ==========
-            if st.button(f"🚀 启动 VIRA 四 Agent 分析（全部 {n} 张）", type="primary", use_container_width=True):
+            if st.button(f"🚀 启动 VIRA 四 Agent 分析（全部 {n} 张）", type="primary", use_container_width=True, disabled=(_cur_credits <= 0)):
                 _batch_new: list[dict] = []
 
                 with st.status(f"🤖 VIRA 批量分析中（共 {n} 张）...", expanded=True) as status_ctx:
@@ -1914,6 +1888,19 @@ if not st.session_state.workflow_result:
                     st.session_state.workflow_result = _first["result"]
                     st.session_state.image_name      = _first["name"]
                     st.session_state.image_data      = _first["image_data"]
+
+                # ── 扣减积分（按实际成功张数扣，最少扣 1 次）────────────────
+                _ok_count = sum(1 for b in _batch_new if b["result"] and b["result"].success)
+                if _ok_count > 0 and _cur_email:
+                    try:
+                        from services.auth import deduct_credit as _dc
+                        _deduct_ok, _remain = _dc(_cur_email)
+                        if _deduct_ok:
+                            # 同步更新 session_state 里的积分缓存
+                            if st.session_state.get("user_info"):
+                                st.session_state.user_info["credits"] = _remain
+                    except Exception:
+                        pass  # 扣减失败不影响使用体验
                 st.rerun()
 
 
