@@ -1,11 +1,22 @@
 """
 core/agents.py
-四个专家 Agent 类定义。
+VIRA 四个专家 Agent 的完整实现。
 
-Agent 1 · 视觉拆解师    — 多模态 Hook 特征提取
-Agent 2 · 转化精算师    — RAG 增强商业重构脚本
-Agent 3 · 合规排雷兵    — TikTok/抖音风控红线扫描（内置品牌风控字典）
-Agent 4 · 策略执行官    — 汇总三路输出，生成 A/B Test 实验设计与成功置信度
+架构说明：
+  每个 Agent 继承自 BaseAgent，run() 方法：
+    1. 构建专属 system prompt（来自 prompts/__init__.py）
+    2. 调用 OpenAIClient.chat()（支持 Vision / 纯文本）
+    3. 解析 JSON 响应，返回 AgentResult
+
+  Agent 1 VisualAnalystAgent     — 多模态 Vision，提取 Hook 特征与视觉质量
+  Agent 2 CommerceOptimizerAgent — RAG 增强，生成 3 套高转化商业脚本
+  Agent 3 ComplianceAuditorAgent — 多模态 Vision，TikTok/抖音合规风险扫描
+  Agent 4 StrategyOptimizerAgent — 纯文本，汇总三路输出，输出最终战略裁决
+
+并发说明（由 workflow.py 管理）：
+  Agent 1 & 3 在 Phase 1 中 asyncio.gather 真正并发
+  Agent 2 在 Phase 2 中串行（依赖 Agent 1 的视觉分析结果）
+  Agent 4 在 Phase 3 中串行（汇总 1/2/3 的全部输出）
 """
 
 import json
@@ -14,147 +25,191 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from prompts import (
-    VISUAL_ANALYST,
-    COMMERCE_OPTIMIZER,
-    COMPLIANCE_AUDITOR,
-    STRATEGY_OPTIMIZER,
-)
 from services.openai_client import OpenAIClient
 from services.rag import RAGService
+import prompts
 
 logger = logging.getLogger(__name__)
 
 
-# ── TikTok 品牌风控红线字典 ──────────────────────────────────────────────────
-# 用于 Agent 3 精准识别商业化禁忌词，演示时可直接向面试官展示此字典。
-# 生产环境建议从数据库/配置文件动态加载，支持按行业/平台分类。
-
-TIKTOK_RISK_DICT: Dict[str, List[str]] = {
-    "绝对化词汇（必须避免）": [
-        "第一", "最好", "最强", "最大", "最小", "最快", "最慢",
-        "最安全", "最权威", "最专业", "最低价", "最高效",
-        "唯一", "绝对", "完全", "100%", "无与伦比", "史无前例",
-        "全国第一", "行业第一", "世界领先",
-    ],
-    "医疗效果暗示（高风险）": [
-        "治疗", "治愈", "根治", "消除疾病", "药到病除",
-        "医学证明", "临床验证", "临床实验", "诊断", "处方",
-        "疗效显著", "康复", "抗癌", "降血糖", "降血压",
-        "改善记忆力", "提高免疫力", "排毒", "解毒",
-    ],
-    "金融收益承诺（严禁）": [
-        "保证回报", "稳赚不赔", "无风险投资", "100%盈利",
-        "保本保息", "日赚万元", "月入十万", "躺赚",
-        "被动收入保证", "财务自由", "轻松月入",
-    ],
-    "虚假宣传（需核实）": [
-        "限时特价", "最后X件", "秒杀价",  # 无截止日期/真实库存限制时违规
-        "真实案例", "用户反馈", "亲测有效",  # 无法核实时违规
-        "专利技术", "独家配方", "秘制",  # 无证书时违规
-    ],
-    "身份冒充（严禁）": [
-        "官方认证", "国家级", "政府推荐", "国家专利",
-        "院士推荐", "诺贝尔奖", "专家强烈推荐",
-        "某某医院专用", "明星同款（未授权）",
-    ],
-    "TikTok 平台专项禁忌": [
-        "点击链接购买", "加微信", "扫码联系",  # 导流违规
-        "刷礼物", "给我打钱",  # 诱导充值
-        "关注涨粉", "互粉", "刷量",  # 虚假互动
-    ],
-}
-
-
-def _format_risk_dict_for_prompt() -> str:
-    """将风控字典格式化为 Prompt 注入格式，便于模型精准对照检查。"""
-    lines = ["【TikTok 品牌风控红线字典（内置规则库 v1.0）】"]
-    for category, terms in TIKTOK_RISK_DICT.items():
-        lines.append(f"\n▸ {category}")
-        lines.append("  禁用词/短语：" + "、".join(f'"{t}"' for t in terms))
-    return "\n".join(lines)
-
-
-# ── 通用数据结构 ──────────────────────────────────────────────────────────────
+# ── 通用结果容器 ──────────────────────────────────────────────────────────────
 
 @dataclass
 class AgentResult:
-    """Agent 执行结果的标准化封装"""
+    """单个 Agent 的执行结果"""
+
     agent_name: str
-    success: bool
+    success: bool = False
     data: Dict[str, Any] = field(default_factory=dict)
     raw_response: str = ""
-    usage: Dict[str, Any] = field(default_factory=dict)
     error: str = ""
+    usage: Dict[str, Any] = field(default_factory=dict)
+
+    def get(self, key: str, default=None):
+        """快捷访问 data 字段"""
+        return self.data.get(key, default)
 
 
-def _extract_json(text: str) -> dict:
+# ── JSON 解析工具函数 ─────────────────────────────────────────────────────────
+
+def _parse_json(text: str, agent_name: str) -> Dict[str, Any]:
     """
-    从 LLM 输出中鲁棒地提取 JSON。
-    兼容：纯 JSON、Markdown code block、JSON 前后有多余文字。
+    从模型响应中鲁棒地提取 JSON。
+
+    按优先级尝试：
+      1. 直接 json.loads（响应完全合规时）
+      2. 提取首个 ```json ... ``` 代码块
+      3. 提取首个 { ... } 匹配（允许多行）
     """
-    if not text:
-        raise ValueError("空响应")
+    text = text.strip()
 
-    # 1. 去除 Markdown code block 包装
-    md_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if md_match:
-        text = md_match.group(1).strip()
+    # 尝试直接解析
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
 
-    # 2. 提取第一个完整 JSON 对象（贪婪匹配，兼容嵌套）
-    brace_match = re.search(r"\{[\s\S]*\}", text)
-    if brace_match:
-        return json.loads(brace_match.group(0))
+    # 提取 ```json 代码块
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
 
-    # 3. 直接尝试解析
-    return json.loads(text.strip())
+    # 提取最外层 { ... }
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning("[%s] JSON parse failed, raw: %s...", agent_name, text[:200])
+    return {}
 
 
-# ── Agent 1：视觉拆解师 ───────────────────────────────────────────────────────
+# ── 基类 ─────────────────────────────────────────────────────────────────────
 
-class VisualAnalystAgent:
-    """
-    Agent 1 · 视觉拆解师
-    职责：多模态视觉特征提取，评估 Hook 质量与情绪基调。
-    """
+class BaseAgent:
+    """所有 Agent 的基类，提供统一的调用框架和错误处理"""
 
-    NAME = "视觉拆解师"
+    name: str = "BaseAgent"
 
     def __init__(self, client: OpenAIClient):
         self.client = client
 
-    def run(self, image_data: bytes, extra_context: str = "") -> AgentResult:
-        user_msg = "请分析这些视频帧图像，重点评估前3秒的视觉 Hook 设计与情绪基调。"
-        if extra_context:
-            user_msg += f"\n\n额外背景：{extra_context}"
-
+    def _call(
+        self,
+        system_prompt: str,
+        user_message: str,
+        image_data: Optional[bytes] = None,
+        max_tokens: int = 1500,
+        temperature: float = 0.3,
+    ) -> AgentResult:
+        """统一 API 调用入口，自动封装成功/失败的 AgentResult"""
+        result = AgentResult(agent_name=self.name)
         try:
             raw = self.client.chat(
-                system_prompt=VISUAL_ANALYST,
-                user_message=user_msg,
+                system_prompt=system_prompt,
+                user_message=user_message,
                 image_data=image_data,
-                max_tokens=800,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
-            data = _extract_json(raw)
-            logger.info("VisualAnalyst OK | hook_type=%s score=%s", data.get("hook_type"), data.get("hook_score"))
-            return AgentResult(self.NAME, True, data, raw, usage=self.client.last_usage)
+            result.raw_response = raw
+            result.usage = dict(self.client.last_usage)
+            result.data = _parse_json(raw, self.name)
+            result.success = bool(result.data)
+            if not result.success:
+                result.error = "JSON 解析失败：模型未返回有效 JSON"
         except Exception as e:
-            logger.error("VisualAnalyst FAILED: %s", e)
-            return AgentResult(self.NAME, False, error=str(e), raw_response=str(e))
+            result.error = str(e)
+            result.success = False
+            logger.error("[%s] call failed: %s", self.name, e, exc_info=True)
+        return result
+
+
+# ── Agent 1：视觉拆解师 ───────────────────────────────────────────────────────
+
+class VisualAnalystAgent(BaseAgent):
+    """
+    Agent 1 · 视觉拆解师 (Visual Analyst)
+
+    职责：多模态 Vision 分析，提取视频帧的 Hook 特征与视觉质量。
+
+    输出 JSON 关键字段：
+      hook_type         — Hook 类型（悬念式/痛点式/结果式等）
+      hook_score        — Hook 质量评分（0-100）
+      visual_score      — 视觉质量评分（0-100）
+      first_3s_analysis — 前3秒画面描述
+      emotional_tone    — 情绪基调
+      key_visual_elements — 关键视觉元素列表
+      hook_summary      — ≤60字一句话总结
+    """
+
+    name = "Agent1·视觉拆解师"
+
+    def __init__(self, client: OpenAIClient):
+        super().__init__(client)
+
+    def run(self, image_data: bytes) -> AgentResult:
+        """
+        分析图片的 Hook 特征与视觉质量。
+
+        Args:
+            image_data: 图片字节（JPEG/PNG，来自 Streamlit file_uploader）
+
+        Returns:
+            AgentResult，data 包含 hook_type / hook_score / visual_score 等
+        """
+        logger.info("[%s] start visual analysis | size=%d bytes", self.name, len(image_data))
+
+        user_message = (
+            "请分析这张视频帧截图，重点提取前3秒 Hook 特征、视觉质量和情绪基调。"
+            "严格按 System Prompt 要求输出 JSON，不要有任何额外文字。"
+        )
+
+        result = self._call(
+            system_prompt=prompts.VISUAL_ANALYST,
+            user_message=user_message,
+            image_data=image_data,
+            max_tokens=800,
+            temperature=0.2,
+        )
+
+        if result.success:
+            logger.info(
+                "[%s] done | hook_type=%s hook_score=%s visual_score=%s",
+                self.name,
+                result.data.get("hook_type", "?"),
+                result.data.get("hook_score", "?"),
+                result.data.get("visual_score", "?"),
+            )
+        return result
 
 
 # ── Agent 2：转化精算师 ───────────────────────────────────────────────────────
 
-class CommerceOptimizerAgent:
+class CommerceOptimizerAgent(BaseAgent):
     """
-    Agent 2 · 转化精算师
-    职责：RAG 增强的商业重构脚本生成，依赖 Agent 1 的视觉分析结果。
+    Agent 2 · 转化精算师 (Commerce Optimizer)
+
+    职责：基于 Agent 1 视觉结果 + RAG 品牌知识库，生成 3 套高转化商业脚本。
+    必须在 Agent 1 完成后串行执行（Phase 2）。
+
+    输出 JSON 关键字段：
+      virality_score      — 病毒潜力评分（0-100）
+      conversion_potential — 转化潜力评分（0-100）
+      scripts             — 3套脚本（hook / body / cta）
+      rag_references      — 引用的知识库片段
+      optimization_summary — ≤80字优化逻辑说明
     """
 
-    NAME = "转化精算师"
+    name = "Agent2·转化精算师"
 
     def __init__(self, client: OpenAIClient, rag: RAGService):
-        self.client = client
+        super().__init__(client)
         self.rag = rag
 
     def run(
@@ -162,97 +217,154 @@ class CommerceOptimizerAgent:
         image_data: bytes,
         visual_result: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
-        rag_context = self.rag.build_context("爆款视频商业化转化脚本结构策略")
-        visual_summary = json.dumps(visual_result or {}, ensure_ascii=False, indent=2)
-        user_msg = (
-            f"请基于以下视觉分析结果和品牌知识库，生成 3 套商业重构脚本：\n\n"
-            f"【视觉分析摘要】\n{visual_summary}\n\n{rag_context}"
+        """
+        生成品牌专属商业脚本。
+
+        Args:
+            image_data:    图片字节（用于 Vision 补充分析）
+            visual_result: Agent 1 输出的 data 字典（可为 None，降级处理）
+
+        Returns:
+            AgentResult，data 包含 scripts 列表等
+        """
+        logger.info("[%s] start commerce optimization", self.name)
+
+        # 构建 Agent 1 摘要（若 Agent 1 成功则注入，否则提示模型独立分析）
+        if visual_result:
+            visual_summary = (
+                f"【Agent 1 视觉分析结果】\n"
+                f"  Hook 类型：{visual_result.get('hook_type', '未知')}\n"
+                f"  Hook 评分：{visual_result.get('hook_score', '?')}/100\n"
+                f"  视觉质量：{visual_result.get('visual_score', '?')}/100\n"
+                f"  情绪基调：{visual_result.get('emotional_tone', '未知')}\n"
+                f"  一句话总结：{visual_result.get('hook_summary', '无')}\n"
+                f"  关键元素：{', '.join(visual_result.get('key_visual_elements', []))}"
+            )
+        else:
+            visual_summary = "【Agent 1 视觉分析结果】暂不可用，请基于图片自行进行视觉判断。"
+
+        # RAG 检索品牌知识库
+        rag_query = (
+            visual_result.get("hook_summary", "爆款视频转化脚本")
+            if visual_result
+            else "爆款视频转化脚本"
         )
-        try:
-            raw = self.client.chat(
-                system_prompt=COMMERCE_OPTIMIZER,
-                user_message=user_msg,
-                image_data=image_data,
-                max_tokens=1500,
-            )
-            data = _extract_json(raw)
+        rag_context = self.rag.build_context(rag_query)
+
+        user_message = (
+            f"{visual_summary}\n\n"
+            f"{rag_context}\n\n"
+            "请根据以上视觉分析和品牌知识库，生成3套高转化商业脚本。"
+            "严格按 System Prompt 要求输出 JSON，不要有任何额外文字。"
+        )
+
+        result = self._call(
+            system_prompt=prompts.COMMERCE_OPTIMIZER,
+            user_message=user_message,
+            image_data=image_data,
+            max_tokens=2000,
+            temperature=0.5,  # 脚本创作需要更多创意
+        )
+
+        if result.success:
             logger.info(
-                "CommerceOptimizer OK | virality=%s scripts=%d",
-                data.get("virality_score"), len(data.get("scripts", [])),
+                "[%s] done | virality=%s conversion=%s scripts=%d",
+                self.name,
+                result.data.get("virality_score", "?"),
+                result.data.get("conversion_potential", "?"),
+                len(result.data.get("scripts", [])),
             )
-            return AgentResult(self.NAME, True, data, raw, usage=self.client.last_usage)
-        except Exception as e:
-            logger.error("CommerceOptimizer FAILED: %s", e)
-            return AgentResult(self.NAME, False, error=str(e), raw_response=str(e))
+        return result
 
 
 # ── Agent 3：合规排雷兵 ───────────────────────────────────────────────────────
 
-class ComplianceAuditorAgent:
+class ComplianceAuditorAgent(BaseAgent):
     """
-    Agent 3 · 合规排雷兵
-    职责：对照内置 TikTok 品牌风控红线字典 + 平台规范，进行精准合规扫描。
+    Agent 3 · 合规排雷兵 (Compliance Auditor)
 
-    核心差异：
-    - 将 TIKTOK_RISK_DICT 完整注入 Prompt，模型可逐类对照检查
-    - 演示效果：面试官可看到 Agent 如何"精准命中"字典中的禁用词
+    职责：多模态 Vision 扫描，检测 TikTok / 抖音合规风险。
+    与 Agent 1 在 Phase 1 中 asyncio.gather 真正并发执行。
+
+    检测范围：极限词 / 医疗声称 / 金融承诺 / 虚假宣传 / 身份冒充
+    风险等级：LOW（绿色）/ MEDIUM（黄色）/ HIGH（红色）
+
+    输出 JSON 关键字段：
+      risk_level       — 整体风险等级（LOW/MEDIUM/HIGH）
+      compliance_score — 合规评分（0-100，越高越合规）
+      violations       — 违规项列表（text/type/severity/suggestion）
+      platform_notes   — TikTok 和抖音分平台说明
+      audit_summary    — ≤60字审计结论
     """
 
-    NAME = "合规排雷兵"
+    name = "Agent3·合规排雷兵"
 
     def __init__(self, client: OpenAIClient):
-        self.client = client
-        # 一次性格式化，避免每次调用重复计算
-        self._risk_dict_prompt = _format_risk_dict_for_prompt()
+        super().__init__(client)
 
     def run(self, image_data: bytes) -> AgentResult:
-        # 将风控字典注入 User Message，让模型"手持字典"逐条对照
-        user_msg = (
-            "请使用以下品牌风控红线字典，对视频帧中所有可见文字和画面内容进行逐类扫描，"
-            "精准标记命中的禁用词或违规图案，给出风险等级和具体修改建议。\n\n"
-            f"{self._risk_dict_prompt}"
+        """
+        扫描图片中的合规风险。
+
+        Args:
+            image_data: 图片字节
+
+        Returns:
+            AgentResult，data 包含 risk_level / violations 等
+        """
+        logger.info("[%s] start compliance audit | size=%d bytes", self.name, len(image_data))
+
+        user_message = (
+            "请仔细扫描这张视频帧截图中可见的所有文字和视觉元素，"
+            "检查是否存在 TikTok / 抖音社区规范或广告法违规风险。"
+            "若画面中无可见文字，重点分析视觉元素是否涉及虚假宣传或身份冒充。"
+            "严格按 System Prompt 要求输出 JSON，不要有任何额外文字。"
         )
-        try:
-            raw = self.client.chat(
-                system_prompt=COMPLIANCE_AUDITOR,
-                user_message=user_msg,
-                image_data=image_data,
-                max_tokens=1000,
-            )
-            data = _extract_json(raw)
 
-            # 将风控字典摘要附加到结果中，UI 可单独展示
-            data["_risk_dict_categories"] = list(TIKTOK_RISK_DICT.keys())
-            data["_total_rules"] = sum(len(v) for v in TIKTOK_RISK_DICT.values())
+        result = self._call(
+            system_prompt=prompts.COMPLIANCE_AUDITOR,
+            user_message=user_message,
+            image_data=image_data,
+            max_tokens=1000,
+            temperature=0.1,  # 合规判断要求高一致性，低温度
+        )
 
+        if result.success:
+            risk = result.data.get("risk_level", "?")
+            violations = result.data.get("violations", [])
             logger.info(
-                "ComplianceAuditor OK | risk=%s score=%s violations=%d",
-                data.get("risk_level"), data.get("compliance_score"), len(data.get("violations", [])),
+                "[%s] done | risk=%s violations=%d compliance_score=%s",
+                self.name,
+                risk,
+                len(violations),
+                result.data.get("compliance_score", "?"),
             )
-            return AgentResult(self.NAME, True, data, raw, usage=self.client.last_usage)
-        except Exception as e:
-            logger.error("ComplianceAuditor FAILED: %s", e)
-            return AgentResult(self.NAME, False, error=str(e), raw_response=str(e))
+        return result
 
 
 # ── Agent 4：策略执行官 ───────────────────────────────────────────────────────
 
-class StrategyOptimizerAgent:
+class StrategyOptimizerAgent(BaseAgent):
     """
     Agent 4 · 策略执行官 (Strategy Optimizer)
-    职责：整合前三个 Agent 的全部输出，作为流水线的最终决策节点。
+
+    职责：汇总 Agent 1/2/3 的全部输出，输出最终可执行战略裁决。
+    必须在三个 Agent 全部完成后串行执行（Phase 3）。
 
     核心产出：
-    - 成功置信度 (Confidence Score 0-100)
-    - A/B Test 实验设计（Control Group vs Test Group）
-    - 关键战略洞察（3条）
-    - 最终裁决 Executive Summary
+      confidence_score — 综合成功置信度（0-100）
+      verdict          — 最终裁决（建议复刻/谨慎复刻/不建议复刻）
+      ab_test          — A/B 测试方案（对照组 vs 实验组）
+      key_insights     — 3条高密度可执行结论
+      executive_summary — ≤100字战略结论
+
+    输入：Agent 1/2/3 的 data 字典（可为 None，降级处理）
     """
 
-    NAME = "策略执行官"
+    name = "Agent4·策略执行官"
 
     def __init__(self, client: OpenAIClient):
-        self.client = client
+        super().__init__(client)
 
     def run(
         self,
@@ -262,37 +374,94 @@ class StrategyOptimizerAgent:
         compliance_result: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
         """
+        基于三路 Agent 输出，生成最终战略决策。
+
         Args:
-            image_data:         图片字节（可选，提供视觉上下文）
-            visual_result:      Agent 1 的 data 字典
-            commerce_result:    Agent 2 的 data 字典
-            compliance_result:  Agent 3 的 data 字典
+            image_data:        图片字节（用于 Vision 辅助判断）
+            visual_result:     Agent 1 data 字典
+            commerce_result:   Agent 2 data 字典
+            compliance_result: Agent 3 data 字典
+
+        Returns:
+            AgentResult，data 包含 confidence_score / ab_test / executive_summary 等
         """
-        # 组装三路 Agent 的完整上下文
-        all_results = {
-            "Agent1_视觉拆解": visual_result or {},
-            "Agent2_转化精算": commerce_result or {},
-            "Agent3_合规排雷": compliance_result or {},
-        }
-        user_msg = (
-            "以下是 VIRA 三位专家 Agent 对同一竞品视频的完整分析结果，"
-            "请综合所有信息，输出最终的战略决策报告：\n\n"
-            + json.dumps(all_results, ensure_ascii=False, indent=2)
+        logger.info("[%s] start strategy synthesis", self.name)
+
+        # 构建上游三路输出摘要
+        sections: List[str] = []
+
+        if visual_result:
+            sections.append(
+                f"【Agent 1 · 视觉拆解师 输出】\n"
+                f"  Hook 类型：{visual_result.get('hook_type', '未知')}\n"
+                f"  Hook 评分：{visual_result.get('hook_score', '?')}/100\n"
+                f"  视觉质量：{visual_result.get('visual_score', '?')}/100\n"
+                f"  前3秒分析：{visual_result.get('first_3s_analysis', '无')}\n"
+                f"  情绪基调：{visual_result.get('emotional_tone', '未知')}\n"
+                f"  关键元素：{', '.join(visual_result.get('key_visual_elements', []))}\n"
+                f"  一句话总结：{visual_result.get('hook_summary', '无')}"
+            )
+        else:
+            sections.append("【Agent 1 · 视觉拆解师 输出】不可用")
+
+        if commerce_result:
+            scripts_preview = ""
+            for i, s in enumerate(commerce_result.get("scripts", [])[:3], 1):
+                scripts_preview += (
+                    f"\n  脚本{i}「{s.get('title', '')}」\n"
+                    f"    Hook：{s.get('hook', '')}\n"
+                    f"    CTA：{s.get('cta', '')}"
+                )
+            sections.append(
+                f"【Agent 2 · 转化精算师 输出】\n"
+                f"  病毒潜力：{commerce_result.get('virality_score', '?')}/100\n"
+                f"  转化潜力：{commerce_result.get('conversion_potential', '?')}/100\n"
+                f"  优化逻辑：{commerce_result.get('optimization_summary', '无')}"
+                f"{scripts_preview}"
+            )
+        else:
+            sections.append("【Agent 2 · 转化精算师 输出】不可用")
+
+        if compliance_result:
+            violations = compliance_result.get("violations", [])
+            v_summary = (
+                "、".join(
+                    f"{v.get('type','?')}({v.get('severity','?')})"
+                    for v in violations[:3]
+                )
+                if violations
+                else "无违规项"
+            )
+            sections.append(
+                f"【Agent 3 · 合规排雷兵 输出】\n"
+                f"  风险等级：{compliance_result.get('risk_level', '?')}\n"
+                f"  合规评分：{compliance_result.get('compliance_score', '?')}/100\n"
+                f"  违规项（前3条）：{v_summary}\n"
+                f"  TikTok 说明：{compliance_result.get('platform_notes', {}).get('tiktok', '无')}\n"
+                f"  审计结论：{compliance_result.get('audit_summary', '无')}"
+            )
+        else:
+            sections.append("【Agent 3 · 合规排雷兵 输出】不可用")
+
+        user_message = (
+            "\n\n".join(sections)
+            + "\n\n请基于以上三路 Agent 分析，综合输出最终战略裁决。"
+            "严格按 System Prompt 要求输出 JSON，不要有任何额外文字。"
         )
 
-        try:
-            raw = self.client.chat(
-                system_prompt=STRATEGY_OPTIMIZER,
-                user_message=user_msg,
-                image_data=image_data,  # 附上原图，给模型最直接的视觉参考
-                max_tokens=1200,
-            )
-            data = _extract_json(raw)
+        result = self._call(
+            system_prompt=prompts.STRATEGY_OPTIMIZER,
+            user_message=user_message,
+            image_data=image_data,
+            max_tokens=1800,
+            temperature=0.3,
+        )
+
+        if result.success:
             logger.info(
-                "StrategyOptimizer OK | confidence=%s verdict=%s",
-                data.get("confidence_score"), data.get("verdict"),
+                "[%s] done | confidence=%s verdict=%s",
+                self.name,
+                result.data.get("confidence_score", "?"),
+                result.data.get("verdict", "?"),
             )
-            return AgentResult(self.NAME, True, data, raw, usage=self.client.last_usage)
-        except Exception as e:
-            logger.error("StrategyOptimizer FAILED: %s", e)
-            return AgentResult(self.NAME, False, error=str(e), raw_response=str(e))
+        return result
