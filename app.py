@@ -1204,6 +1204,99 @@ with st.sidebar:
         st.session_state.auth_mode = "login"
         st.rerun()
 
+    # ── 管理员后台入口（仅对 ADMIN_EMAIL 可见）────────────────────────────────
+    _admin_email = (
+        st.secrets.get("ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL", "")
+    ).strip().lower()
+    if _admin_email and _email_s.lower() == _admin_email:
+        st.markdown("---")
+        with st.expander("🛠 管理员后台", expanded=False):
+            st.markdown(
+                '<div style="font-size:11px;color:#818CF8;font-weight:700;'
+                'margin-bottom:10px;letter-spacing:.06em;">// ADMIN PANEL</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 用户列表 ──────────────────────────────────────────────────
+            st.markdown("**📋 用户列表**")
+            try:
+                import sqlite3 as _sq
+                from services.auth import DB_PATH as _DB
+                with _sq.connect(str(_DB)) as _ac:
+                    _ac.row_factory = _sq.Row
+                    _rows = _ac.execute(
+                        "SELECT id, email, display_name, credits, is_pro, "
+                        "daily_used, last_reset_date, created_at "
+                        "FROM vira_users ORDER BY created_at DESC"
+                    ).fetchall()
+                for _r in _rows:
+                    _pro_tag = " 🟣PRO" if _r["is_pro"] else ""
+                    st.markdown(
+                        f'<div style="font-size:11px;padding:5px 0;'
+                        f'border-bottom:1px solid rgba(255,255,255,.05);">'
+                        f'<b style="color:#E2E8F0;">{_r["email"]}</b>{_pro_tag}<br>'
+                        f'<span style="color:#64748B;">'
+                        f'报告额度 {_r["credits"]} 份 · 今日 {_r["daily_used"] or 0} 条 · '
+                        f'注册 {(_r["created_at"] or "")[:10]}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+            except Exception as _ae:
+                st.error(f"读取失败：{_ae}")
+
+            st.markdown("---")
+
+            # ── 开通 / 取消 Pro ───────────────────────────────────────────
+            st.markdown("**✨ 开通 / 取消 Pro**")
+            _pro_email = st.text_input("用户邮箱", key="admin_pro_email",
+                                       placeholder="user@example.com")
+            _pro_col1, _pro_col2 = st.columns(2)
+            with _pro_col1:
+                if st.button("开通 Pro", key="admin_set_pro", use_container_width=True):
+                    if _pro_email.strip():
+                        from services.auth import set_pro as _sp
+                        _ok, _msg = _sp(_pro_email.strip(), True)
+                        st.success(_msg) if _ok else st.error(_msg)
+                    else:
+                        st.warning("请填写邮箱")
+            with _pro_col2:
+                if st.button("取消 Pro", key="admin_unset_pro", use_container_width=True):
+                    if _pro_email.strip():
+                        from services.auth import set_pro as _sp
+                        _ok, _msg = _sp(_pro_email.strip(), False)
+                        st.success(_msg) if _ok else st.error(_msg)
+                    else:
+                        st.warning("请填写邮箱")
+
+            st.markdown("---")
+
+            # ── 补充报告额度 ──────────────────────────────────────────────
+            st.markdown("**📦 补充报告份数**")
+            _add_email  = st.text_input("用户邮箱", key="admin_add_email",
+                                        placeholder="user@example.com")
+            _add_amount = st.number_input("补充份数", min_value=1, max_value=200,
+                                          value=5, key="admin_add_amount")
+            if st.button("确认补充", key="admin_add_credits", use_container_width=True):
+                if _add_email.strip():
+                    from services.auth import add_credits as _ac_fn
+                    _ok, _new = _ac_fn(_add_email.strip(), int(_add_amount))
+                    st.success(f"✅ 已补充 {_add_amount} 份，现有 {_new} 份") if _ok else st.error("用户不存在")
+                else:
+                    st.warning("请填写邮箱")
+
+            st.markdown("---")
+
+            # ── 生成礼品码 ────────────────────────────────────────────────
+            st.markdown("**🎁 生成礼品码**")
+            _gc_count = st.number_input("生成数量", min_value=1, max_value=50,
+                                        value=5, key="admin_gc_count")
+            _gc_credits = st.number_input("每张额度（份）", min_value=1, max_value=50,
+                                          value=5, key="admin_gc_credits")
+            if st.button("生成", key="admin_gen_codes", use_container_width=True, type="primary"):
+                from services.auth import generate_gift_codes as _ggc
+                _new_codes = _ggc(count=int(_gc_count), credits=int(_gc_credits))
+                st.success(f"已生成 {len(_new_codes)} 张礼品码：")
+                st.code("  ".join(_new_codes), language=None)
+
     st.markdown("""
 <div style="display:flex;align-items:center;gap:8px;padding:4px 0 14px;">
   <div style="width:7px;height:7px;border-radius:50%;background:#6366F1;
