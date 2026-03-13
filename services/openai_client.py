@@ -5,6 +5,7 @@ services/openai_client.py
 
 import base64
 import logging
+import re
 import time
 from typing import Optional
 
@@ -12,6 +13,13 @@ import tiktoken
 from openai import OpenAI, RateLimitError, APIError, APIConnectionError
 
 logger = logging.getLogger(__name__)
+
+_KEY_PAT = re.compile(r"sk-[A-Za-z0-9\-_]{10,}")
+
+
+def _redact(text: str) -> str:
+    """把字符串里所有 sk-... 替换为 [REDACTED]，防止 key 泄漏到错误信息"""
+    return _KEY_PAT.sub("[REDACTED]", str(text))
 
 
 class OpenAIClient:
@@ -115,11 +123,11 @@ class OpenAIClient:
                     raise
 
             except (APIError, APIConnectionError) as e:
-                logger.error("API error (attempt %d): %s", attempt + 1, e)
+                logger.error("API error (attempt %d): %s", attempt + 1, _redact(str(e)))
                 if attempt < self.MAX_RETRIES - 1:
                     time.sleep(self.BASE_DELAY)
                 else:
-                    raise
+                    raise RuntimeError(_redact(str(e))) from None
 
         raise RuntimeError("OpenAI API: max retries exceeded")
 

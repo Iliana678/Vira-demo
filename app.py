@@ -32,6 +32,17 @@ from PIL import Image
 load_dotenv()
 
 
+# ── 安全日志过滤：防止 API Key 意外出现在日志中 ──────────────────────────────
+class _SensitiveFilter(logging.Filter):
+    """把所有日志里的 sk-... 替换为 [REDACTED]，防止 key 泄漏到日志"""
+    import re as _re
+    _PAT = _re.compile(r"sk-[A-Za-z0-9\-_]{10,}")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = self._PAT.sub("[REDACTED]", str(record.msg))
+        record.args = None  # 清空格式化参数，避免二次泄漏
+        return True
+
 
 # ── 日志（INFO → stdout，方便 Streamlit Cloud 日志面板查看）─────────────────
 logging.basicConfig(
@@ -40,6 +51,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("vira.app")
+logging.getLogger().addFilter(_SensitiveFilter())  # 全局生效
 
 # ── 页面配置（必须在所有 st.* 之前）─────────────────────────────────────────
 st.set_page_config(
@@ -1307,26 +1319,21 @@ with st.sidebar:
                color:#3D4F68;">· 爆款侦察兵</span>
 </div>
 """, unsafe_allow_html=True)
-    # API Key 和模型选择：仅管理员可见
-    # 普通用户直接使用后端配置的 key，无需填写也看不到
+    # API Key 永远不显示在任何 UI 元素中
+    # Key 仅在服务端 session_state 内存中存在，不渲染到任何 HTML
     _is_admin_view = _admin_email and _email_s.lower() == _admin_email
     if _is_admin_view:
-        st.markdown(
-            '<div style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.18em;'
-            'color:#3D4F68;margin-bottom:8px;">// API 配置（仅管理员）</div>',
-            unsafe_allow_html=True
-        )
-        api_in = st.text_input(
-            "OpenAI API Key", type="password",
-            value=st.session_state.api_key, placeholder="sk-...",
-            help="platform.openai.com 获取，或写入 .env 文件",
-        )
-        if api_in:
-            st.session_state.api_key = api_in
-
+        # 管理员只能切换模型，key 完全不可见
         st.session_state.model = st.selectbox(
             "模型", ["gpt-4o", "gpt-4o-mini"], index=0,
             help="gpt-4o 视觉最强；gpt-4o-mini 更快省 Token",
+        )
+        _key_masked = ("已配置 ✅" if st.session_state.api_key else "未配置 ❌")
+        st.markdown(
+            f'<div style="font-size:10px;color:#3D4F68;margin-top:4px;">'
+            f'API Key 状态：<b style="color:#22C55E;">{_key_masked}</b>'
+            f'<br>如需更换，请在 Streamlit Secrets 中修改</div>',
+            unsafe_allow_html=True,
         )
 
     st.divider()
