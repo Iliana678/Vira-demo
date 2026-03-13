@@ -52,8 +52,12 @@ st.set_page_config(
 def check_password():
     """验证用户密码，并应用高级感渐变 UI"""
     def password_entered():
-        # 这里设置你的访问暗号
-        if st.session_state["password"] == "VIRA2026-100":
+        # 从 Streamlit Secrets 或环境变量读取，不硬编码
+        _correct = (
+            st.secrets.get("ACCESS_KEY")
+            or os.getenv("ACCESS_KEY", "")
+        )
+        if _correct and st.session_state["password"] == _correct:
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
@@ -922,18 +926,26 @@ def _render_auth_page() -> None:
     # ── 注册表单 ────────────────────────────────────────────────────────────
     else:
         with st.form("vira_signup_form", clear_on_submit=False):
-            _name  = st.text_input("昵称（可选）",  placeholder="你的名字")
-            _email = st.text_input("邮箱地址 *",   placeholder="name@example.com")
-            _pwd   = st.text_input("密码 *",       placeholder="至少 6 位", type="password")
-            _pwd2  = st.text_input("确认密码 *",   placeholder="再输入一次", type="password")
-            _sub   = st.form_submit_button(
+            _name   = st.text_input("昵称（可选）",   placeholder="你的名字")
+            _email  = st.text_input("邮箱地址 *",    placeholder="name@example.com")
+            _pwd    = st.text_input("密码 *",        placeholder="至少 6 位", type="password")
+            _pwd2   = st.text_input("确认密码 *",    placeholder="再输入一次", type="password")
+            _invite = st.text_input("邀请码 *",      placeholder="请联系管理员获取")
+            _sub    = st.form_submit_button(
                 "注册账户 →", use_container_width=True, type="primary"
             )
         if _sub:
+            # 校验邀请码（从 Secrets 或环境变量读取，不写死）
+            _valid_invite = (
+                st.secrets.get("INVITE_CODE")
+                or os.getenv("INVITE_CODE", "")
+            )
             if not _email or not _pwd:
                 _msg_slot.error("请填写邮箱和密码")
             elif _pwd != _pwd2:
                 _msg_slot.error("两次密码不一致")
+            elif not _valid_invite or _invite.strip() != _valid_invite:
+                _msg_slot.error("❌ 邀请码不正确，请联系管理员获取")
             else:
                 try:
                     from services.auth import register as _auth_reg
