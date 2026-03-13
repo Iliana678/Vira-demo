@@ -1766,18 +1766,51 @@ if not st.session_state.workflow_result:
             except Exception:
                 _cur_credits = 1  # 读取失败时放行，避免误拦截
             if _cur_credits <= 0:
-                st.error("🔒 分析次数已用完")
                 st.markdown("""
-<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);
-            border-radius:12px;padding:16px 20px;margin-top:8px;">
-  <div style="font-size:15px;font-weight:700;color:#FCA5A5;margin-bottom:6px;">
-    🎯 喜欢 VIRA？申请更多次数
+<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.18);
+            border-radius:14px;padding:20px 22px;margin:4px 0 12px;">
+  <div style="font-size:15px;font-weight:800;color:#E2E8F0;margin-bottom:4px;">
+    🔒 本月免费额度已用完
   </div>
-  <div style="font-size:12px;color:#94A3B8;line-height:1.7;">
-    发送邮件至 <b style="color:#E2E8F0;">hi@vira.ai</b> 告诉我们你的使用场景，<br>
-    我们会在 24 小时内为你补充额度。
+  <div style="font-size:12px;color:#64748B;margin-bottom:16px;">
+    升级订阅，解锁无限分析次数
+  </div>
+  <a href="mailto:hi@vira.ai?subject=申请订阅VIRA&body=我想订阅VIRA，请联系我。"
+     style="display:block;text-align:center;background:linear-gradient(135deg,#6366F1,#A855F7);
+            color:#fff;font-size:13px;font-weight:700;padding:11px 0;border-radius:9px;
+            text-decoration:none;letter-spacing:.03em;margin-bottom:6px;">
+    ✨ 订阅 VIRA Pro →
+  </a>
+  <div style="font-size:10px;color:#3D4F68;text-align:center;margin-bottom:14px;">
+    发送后我们会在 24h 内联系你
   </div>
 </div>""", unsafe_allow_html=True)
+
+                # 礼品码兑换入口（小字，次要入口）
+                with st.expander("有礼品码？点击兑换", expanded=False):
+                    _gift_input = st.text_input(
+                        "输入 6 位礼品码",
+                        placeholder="如：A3F9K2",
+                        max_chars=8,
+                        label_visibility="collapsed",
+                        key="gift_code_input",
+                    )
+                    if st.button("兑换", key="redeem_gift_btn", use_container_width=True):
+                        if _gift_input.strip():
+                            try:
+                                from services.auth import redeem_gift_code as _redeem
+                                _ok, _rmsg, _new_c = _redeem(_cur_email, _gift_input.strip())
+                                if _ok:
+                                    st.success(_rmsg)
+                                    if st.session_state.get("user_info"):
+                                        st.session_state.user_info["credits"] = _new_c
+                                    st.rerun()
+                                else:
+                                    st.error(_rmsg)
+                            except Exception as _re:
+                                st.error(f"兑换失败：{_re}")
+                        else:
+                            st.warning("请输入礼品码")
             # ========== 🚀 批量分析核心执行逻辑 ==========
             if st.button(f"🚀 启动 VIRA 四 Agent 分析（全部 {n} 张）", type="primary", use_container_width=True, disabled=(_cur_credits <= 0)):
                 _batch_new: list[dict] = []

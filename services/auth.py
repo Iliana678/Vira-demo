@@ -15,13 +15,16 @@ services/auth.py
 
 import hashlib
 import os
+import random
 import re
 import sqlite3
+import string
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "data" / "users.db"
 
-FREE_CREDITS = 5  # 新用户注册赠送次数
+FREE_CREDITS = 5        # 新用户注册赠送次数
+GIFT_CREDITS = 5        # 每张礼品码兑换的次数
 
 
 # ── 建表 ──────────────────────────────────────────────────────────────────────
@@ -39,11 +42,22 @@ def _init_db() -> None:
                 created_at    TEXT    DEFAULT (datetime('now'))
             )
         """)
+        # 礼品码表：每个 6 位码一次性使用，兑换固定 credits
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS gift_codes (
+                code        TEXT    PRIMARY KEY,
+                credits     INTEGER NOT NULL DEFAULT 5,
+                used        INTEGER NOT NULL DEFAULT 0,
+                used_by     TEXT    DEFAULT '',
+                used_at     TEXT    DEFAULT '',
+                created_at  TEXT    DEFAULT (datetime('now'))
+            )
+        """)
         # 兼容旧表（已存在但没有 credits 列）
         try:
             conn.execute("ALTER TABLE vira_users ADD COLUMN credits INTEGER DEFAULT 5")
         except sqlite3.OperationalError:
-            pass  # 列已存在，忽略
+            pass
         conn.commit()
 
 
@@ -183,6 +197,99 @@ def add_credits(email: str, amount: int) -> tuple[bool, int]:
         return True, new_credits
     except Exception:
         return False, 0
+
+
+# ── 礼品码 ────────────────────────────────────────────────────────────────────
+
+def _random_code(length: int = 6) -> str:
+    """生成大写字母 + 数字的随机码，去除易混淆字符（0/O/1/I）"""
+    charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(random.choices(charset, k=length))
+
+
+def generate_gift_codes(count: int = 1, credits: int = GIFT_CREDITS) -> list[str]:
+    """
+    批量生成礼品码（管理员调用）。
+
+    用法示例（在终端或脚本中）：
+        from services.auth import generate_gift_codes
+        codes = generate_gift_codes(count=10)
+        print(codes)  # ['A3F9K2', 'XM7R4N', ...]
+
+    Args:
+        count:   生成数量
+        credits: 每张码兑换的次数（默认 GIFT_CREDITS=5）
+
+    Returns:
+        生成的礼品码列表
+    """
+    codes = []
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        for _ in range(count):
+            for _attempt in range(20):  # 最多重试 20 次避免碰撞
+                code = _random_code()
+                try:
+                    conn.execute(
+                        "INSERT INTO gift_codes (code, credits) VALUES (?, ?)",
+                        (code, credits),
+                    )
+                    codes.append(code)
+                    break
+                except sqlite3.IntegrityError:
+                    continue  # 极低概率碰撞，重新生成
+        conn.commit()
+    return codes
+
+
+def redeem_gift_code(email: str, code: str) -> tuple[bool, str, int]:
+    """
+    用户兑换礼品码。
+
+    Args:
+        email: 用户邮箱
+        code:  6 位礼品码（大小写不敏感）
+
+    Returns:
+        (success, message, new_credits)
+        success=True  → 兑换成功，new_credits 为兑换后的剩余次数
+        success=False → 兑换失败，new_credits=0
+    """
+    email = email.strip().lower()
+    code  = code.strip().upper()
+    if not code:
+        return False, "请输入礼品码", 0
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM gift_codes WHERE code = ?", (code,)
+            ).fetchone()
+            if row is None:
+                return False, "礼品码不存在，请检查后重试", 0
+            if row["used"]:
+                return False, "该礼品码已被使用过了", 0
+
+            # 标记已使用
+            conn.execute(
+                "UPDATE gift_codes SET used=1, used_by=?, used_at=datetime('now') WHERE code=?",
+                (email, code),
+            )
+            # 给用户加积分
+            gift_credits = row["credits"]
+            conn.execute(
+                "UPDATE vira_users SET credits = credits + ? WHERE email = ? COLLATE NOCASE",
+                (gift_credits, email),
+            )
+            conn.commit()
+
+            # 返回最新积分
+            new_row = conn.execute(
+                "SELECT credits FROM vira_users WHERE email = ? COLLATE NOCASE", (email,)
+            ).fetchone()
+            new_credits = new_row["credits"] if new_row else gift_credits
+        return True, f"🎉 兑换成功！已获得 {gift_credits} 次分析额度", new_credits
+    except Exception as e:
+        return False, f"兑换出错：{e}", 0
 
 
 # ── 统计 ──────────────────────────────────────────────────────────────────────
