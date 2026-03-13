@@ -1,0 +1,29 @@
+# ── VIRA · 爆款侦察兵 · Streamlit Community Cloud 依赖清单 ──────────────────
+# 生成方式：扫描所有 .py import，剔除 Python 内置库（os/sys/json/io/asyncio 等）
+# 最后验证：2026-03-13
+
+# ── 核心框架 ────────────────────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── AI / LLM ────────────────────────────────────────────────────────────────
+openai>=1.40.0          # OpenAI SDK（Chat + Vision + Whisper）
+tiktoken>=0.7.0         # Token 计数（OpenAIClient.count_tokens）
+
+# ── 图像处理 ────────────────────────────────────────────────────────────────
+Pillow>=10.3.0          # PIL.Image — 上传图片校验与缩略图渲染
+
+# ── RAG / 文本向量化 ─────────────────────────────────────────────────────────
+numpy>=1.26.0           # TF-IDF 向量矩阵运算
+scikit-learn>=1.5.0     # TfidfVectorizer + cosine_similarity
+
+# ── 工具 ────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.1    # load_dotenv()（本地 .env；云端由 Secrets 注入）
+nest-asyncio>=1.6.0     # asyncio.run() 嵌套兼容（Streamlit 同步上下文）
+
+# ── 报告导出（可选，不安装自动降级为 Markdown 下载）────────────────────────
+fpdf2>=2.7.9
+
+# ── 视频口播提取（可选，不安装自动降级为直传 Whisper）───────────────────────
+# ffmpeg-python>=0.2.0
+# 注意：ffmpeg-python 还需宿主机安装系统级 ffmpeg 二进制
+# Streamlit Community Cloud 沙箱不支持系统级二进制，请保持注释状态

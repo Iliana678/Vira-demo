@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIRA · 上传竞品视频，30秒知道为什么它爆</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;900&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── TOKENS ── */
+:root {
+  --or:#FF5722; --or2:#FF7A50; --orD:rgba(255,87,34,.1); --orG:rgba(255,87,34,.22);
+  --go:#F0A500; --goD:rgba(240,165,0,.1); --goG:rgba(240,165,0,.22);
+  --gr:#00C97A; --grD:rgba(0,201,122,.1);
+  --re:#FF3D55; --reD:rgba(255,61,85,.1);
+  --pu:#9B72FF; --puD:rgba(155,114,255,.1);
+  --cy:#00BBDD; --cyD:rgba(0,187,221,.1);
+  --t0:#F4EFE6; --t1:#8A8070; --t2:#48413A;
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+
+/* ── BACKGROUND — 暖深色，带微妙纹理，不是平黑 ── */
+body {
+  color:var(--t0);
+  font-family:'Noto Sans SC',sans-serif;
+  overflow-x:hidden;
+  line-height:1.7;
+
+  /* 分层背景：暖棕底色 + 微渐变光泽 + 噪声纹理 */
+  background-color:#0F0D0A;
+  background-image:
+    /* 顶部中央暖橙晕 */
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,87,34,.07) 0%, transparent 60%),
+    /* 右下角金色晕 */
+    radial-gradient(ellipse 50% 40% at 90% 80%, rgba(240,165,0,.04) 0%, transparent 55%),
+    /* 噪声纹理 — 给底色质感 */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+/* section 分隔用微妙色块区分，不是空白平黑 */
+.bg-alt {
+  background:linear-gradient(180deg, rgba(255,255,255,.013) 0%, rgba(255,255,255,.02) 50%, rgba(255,255,255,.013) 100%);
+  border-top:1px solid rgba(255,255,255,.04);
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+
+/* ── SCROLL REVEAL ── */
+.rv{opacity:0;transform:translateY(22px);transition:opacity .6s cubic-bezier(.25,.46,.45,.94),transform .6s cubic-bezier(.25,.46,.45,.94);}
+.rvl{opacity:0;transform:translateX(-20px);transition:opacity .55s ease,transform .55s ease;}
+.rvr{opacity:0;transform:translateX(20px);transition:opacity .55s ease,transform .55s ease;}
+.rv.in,.rvl.in,.rvr.in{opacity:1;transform:none;}
+.d1{transition-delay:.08s;}.d2{transition-delay:.16s;}.d3{transition-delay:.24s;}.d4{transition-delay:.32s;}
+
+/* ── NAV ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 44px;height:56px;
+  background:rgba(15,13,10,.88);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(255,255,255,.055);
+  transition:background .3s;
+}
+.nlogo{font-family:'Plus Jakarta Sans',sans-serif;font-size:18px;font-weight:800;letter-spacing:.04em;display:flex;align-items:center;gap:8px;}
+.ndot{width:7px;height:7px;border-radius:50%;background:var(--or);box-shadow:0 0 10px var(--or);animation:pulse 2s infinite;}
+.nlinks{display:flex;gap:26px;align-items:center;}
+.nlinks a{font-size:13px;color:var(--t1);text-decoration:none;transition:color .2s;}
+.nlinks a:hover{color:var(--t0);}
+.ncta{
+  background:var(--or);color:#fff;border:none;padding:8px 20px;border-radius:8px;
+  font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif;
+  box-shadow:0 3px 0 #7A1E00,0 4px 14px var(--orG),inset 0 1px 0 rgba(255,255,255,.14);
+  transition:all .11s;transform:translateY(0);
+}
+.ncta:hover{background:var(--or2);transform:translateY(-1px);box-shadow:0 4px 0 #7A1E00,0 6px 18px var(--orG);}
+.ncta:active{transform:translateY(2px);box-shadow:0 1px 0 #7A1E00;}
+
+/* ── HERO ── */
+.hero{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:100px 24px 72px;position:relative;overflow:hidden;
+}
+/* Hero 专属光晕层 */
+.hglow{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.hg1{position:absolute;top:-5%;left:50%;transform:translateX(-50%);width:860px;height:560px;border-radius:50%;background:radial-gradient(ellipse,rgba(255,87,34,.09) 0%,transparent 55%);}
+.hg2{position:absolute;bottom:5%;right:5%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(240,165,0,.055) 0%,transparent 55%);}
+.hg3{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,87,34,.15),rgba(240,165,0,.12),transparent);}
+
+.hbadge{
+  display:inline-flex;align-items:center;gap:8px;margin-bottom:20px;
+  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.2em;
+  color:var(--go);border:1px solid rgba(240,165,0,.25);background:var(--goD);
+  padding:5px 16px;border-radius:20px;
+}
+.hbdot{width:5px;height:5px;border-radius:50%;background:var(--go);animation:pulse 1.6s infinite;}
+
+h1{
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:clamp(36px,5.5vw,68px);font-weight:800;line-height:1.08;letter-spacing:-.025em;margin-bottom:12px;
+}
+.h1cn{font-family:'Noto Sans SC',sans-serif;font-weight:900;}
+.h1acc{
+  display:block;
+  background:linear-gradient(108deg,var(--or) 0%,var(--go) 55%,var(--or2) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(0 0 32px rgba(255,87,34,.25));
+}
+
+.hsub{font-size:15px;color:var(--t1);max-width:460px;margin:0 auto 32px;line-height:1.9;}
+.hsub strong{color:var(--t0);font-weight:500;}
+
+.hbtns{display:flex;gap:10px;justify-content:center;margin-bottom:48px;flex-wrap:wrap;}
+.bprim{
+  display:flex;align-items:center;gap:7px;
+  background:var(--or);color:#fff;border:none;padding:13px 26px;border-radius:10px;
+  font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans SC',sans-serif;
+  box-shadow:0 4px 0 #7A1E00,0 7px 22px var(--orG),inset 0 1px 0 rgba(255,255,255,.15);
+  transform:translateY(0);transition:all .11s;
+}
+.bprim:hover{background:var(--or2);transform:translateY(-1px);box-shadow:0 5px 0 #7A1E00,0 9px 26px var(--orG);}
+.bprim:active{transform:translateY(3px);box-shadow:0 1px 0 #7A1E00;}
+.bghost{
+  display:flex;align-items:center;gap:7px;
+  background:rgba(255,255,255,.05);color:var(--t0);
+  border:1px solid rgba(255,255,255,.12);padding:13px 22px;border-radius:10px;
+  font-size:14px;font-weight:500;cursor:pointer;font-family:'Noto Sans SC',sans-serif;
+  transition:all .15s;backdrop-filter:blur(6px);
+}
+.bghost:hover{border-color:var(--or);color:var(--or);background:var(--orD);}
+
+.proof{display:flex;gap:32px;justify-content:center;flex-wrap:wrap;font-size:13px;color:var(--t1);}
+.pitem{display:flex;align-items:center;gap:6px;}
+.pnum{font-family:'Plus Jakarta Sans',sans-serif;font-size:17px;font-weight:800;color:var(--t0);}
+
+/* ── MOCK SCREEN ── */
+.mock{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;overflow:hidden;
+  box-shadow:0 32px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.03);
+}
+.mbar{
+  background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);
+  padding:10px 16px;display:flex;align-items:center;gap:10px;
+}
+.mdots{display:flex;gap:5px;}
+.mdt{width:10px;height:10px;border-radius:50%;}
+.mt1{background:#FF5F57;}.mt2{background:#FFBD2E;}.mt3{background:#28CA41;}
+.mtitle{font-family:'DM Mono',monospace;font-size:10px;color:var(--t2);flex:1;text-align:center;}
+.mbody{padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.mframes{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
+.mf{
+  aspect-ratio:9/16;border-radius:7px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  position:relative;
+}
+.mfl{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-family:'DM Mono',monospace;font-size:7px;color:rgba(255,255,255,.35);background:rgba(0,0,0,.45);padding:1px 0;}
+.magents{display:flex;flex-direction:column;gap:7px;}
+.mac{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 12px;position:relative;overflow:hidden;}
+.mac::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;}
+.mac-a::before{background:var(--cy);}.mac-b::before{background:var(--re);}.mac-c::before{background:var(--pu);}
+.maclbl{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.1em;margin-bottom:4px;display:flex;align-items:center;gap:4px;}
+.macdot{width:4px;height:4px;border-radius:50%;}
+.macval{font-size:11px;color:var(--t1);line-height:1.5;}
+.macval strong{color:var(--t0);font-weight:600;}
+.msum{
+  grid-column:1/-1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  border-radius:9px;padding:12px 14px;
+  display:flex;align-items:center;gap:12px;position:relative;overflow:hidden;
+}
+.msum::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gr),var(--go),transparent);}
+.mgrade{width:42px;height:42px;border-radius:8px;flex-shrink:0;background:rgba(0,201,122,.12);border:1px solid rgba(0,201,122,.3);display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:var(--gr);}
+.mstxt{font-size:11px;color:var(--t1);line-height:1.6;}
+.mstxt strong{color:var(--t0);}
+
+/* ── WRAP / SECTION ── */
+.w{max-width:940px;margin:0 auto;padding:0 24px;}
+.sec{padding:80px 0;}
+.slbl{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.22em;color:var(--or);margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.slbl::before{content:'//';color:var(--t2);}
+.sh{font-family:'Plus Jakarta Sans',sans-serif;font-size:clamp(26px,3.8vw,42px);font-weight:800;line-height:1.15;letter-spacing:-.02em;margin-bottom:12px;}
+.sh .cn{font-family:'Noto Sans SC',sans-serif;font-weight:900;}
+.sp{font-size:14px;color:var(--t1);max-width:500px;line-height:1.85;margin-bottom:44px;}
+.sdivider{border:none;border-top:1px solid rgba(255,255,255,.05);margin:0;}
+
+/* ── BEFORE / AFTER ── */
+.bagrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.bacard{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;padding:26px;
+}
+.bahead{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.2em;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);}
+.bahead.bef{color:var(--re);}.bahead.aft{color:var(--gr);}
+.barow{display:flex;align-items:flex-start;gap:10px;font-size:13px;margin-bottom:13px;line-height:1.65;color:var(--t1);}
+.barow.pos{color:var(--t0);}
+.bai{flex-shrink:0;margin-top:1px;}
+
+/* ── STEPS ── */
+.steplist{display:flex;flex-direction:column;gap:2px;}
+.step{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;padding:28px 32px;
+  display:grid;grid-template-columns:72px 1fr;gap:20px;align-items:start;
+  transition:background .22s,border-color .22s;cursor:default;
+}
+.step:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);}
+.snum{font-family:'Plus Jakarta Sans',sans-serif;font-size:48px;font-weight:800;line-height:1;color:rgba(255,255,255,.08);letter-spacing:-.03em;}
+.sico{font-size:26px;margin-bottom:8px;display:block;}
+.stitle{font-size:17px;font-weight:700;margin-bottom:5px;}
+.sdesc{font-size:13px;color:var(--t1);line-height:1.8;margin-bottom:12px;}
+.stags{display:flex;gap:6px;flex-wrap:wrap;}
+.stag{font-family:'DM Mono',monospace;font-size:10px;padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.09);color:var(--t1);background:rgba(255,255,255,.03);}
+.stag.or{border-color:rgba(255,87,34,.3);color:var(--or);background:var(--orD);}
+.stag.go{border-color:rgba(240,165,0,.3);color:var(--go);background:var(--goD);}
+.stag.gr{border-color:rgba(0,201,122,.3);color:var(--gr);background:var(--grD);}
+
+/* ── AGENTS — 修复布局：A/B/C 三列 + D 全宽 ── */
+.ag3col{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;}
+.agcard{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;padding:22px 22px 20px;
+  position:relative;overflow:hidden;
+  transition:background .22s,transform .22s;cursor:default;
+}
+.agcard::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  opacity:.7;
+}
+.ag-a::after{background:var(--cy);}
+.ag-b::after{background:var(--re);}
+.ag-c::after{background:var(--pu);}
+.agcard:hover{background:rgba(255,255,255,.055);transform:translateY(-2px);}
+
+/* Agent D — 横向布局，跨全宽，用金色上边线彰显"总指挥"地位 */
+.agd{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;overflow:hidden;position:relative;
+  transition:background .22s;
+}
+.agd::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--go),var(--or),var(--go));}
+.agd:hover{background:rgba(255,255,255,.05);}
+.agd-inner{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+.agd-left{padding:24px 28px;}
+.agd-right{padding:22px 24px;background:rgba(255,255,255,.025);border-left:1px solid rgba(255,255,255,.06);}
+
+.agid{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;display:flex;align-items:center;gap:5px;margin-bottom:14px;}
+.agdot{width:6px;height:6px;border-radius:50%;}
+.agico{font-size:26px;margin-bottom:10px;display:block;}
+.agname{font-size:17px;font-weight:700;margin-bottom:4px;}
+.agsub{font-size:12px;color:var(--t1);margin-bottom:12px;}
+.agdesc{font-size:13px;color:var(--t1);line-height:1.75;margin-bottom:14px;}
+.agtags{display:flex;gap:6px;flex-wrap:wrap;}
+.agtag{font-size:11px;padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.09);color:var(--t1);}
+
+/* D 的示例输出卡 */
+.dout-lbl{font-family:'DM Mono',monospace;font-size:9px;color:var(--t2);letter-spacing:.18em;margin-bottom:12px;}
+.dgrade-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.dgrade-box{width:42px;height:42px;border-radius:8px;flex-shrink:0;background:rgba(0,201,122,.12);border:1px solid rgba(0,201,122,.3);display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:var(--gr);}
+.dgrade-info{font-size:12px;color:var(--t1);line-height:1.5;}
+.dgrade-info strong{color:var(--t0);}
+.dreco{font-size:12px;color:var(--t1);line-height:1.7;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;}
+.dreco strong{color:var(--go);}
+
+/* ── TESTIMONIALS ── */
+.tgrid{display:flex;flex-direction:column;gap:10px;}
+.tcard{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:22px 26px;transition:background .2s;}
+.tcard:hover{background:rgba(255,255,255,.05);}
+.tstars{color:var(--go);font-size:13px;margin-bottom:10px;letter-spacing:2px;}
+.ttxt{font-size:14px;color:var(--t0);line-height:1.8;margin-bottom:14px;}
+.tperson{display:flex;align-items:center;gap:10px;}
+.tav{width:36px;height:36px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.tname{font-size:14px;font-weight:600;}
+.trole{font-size:11px;color:var(--t1);}
+
+/* ── PRICING ── */
+.pgrid{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:12px;align-items:start;}
+.pcard{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:15px;padding:26px;}
+.pcard.feat{background:rgba(255,255,255,.05);border-color:rgba(255,87,34,.35);position:relative;overflow:hidden;}
+.pcard.feat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--or),var(--go));}
+.pbadge{display:inline-block;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.14em;padding:3px 10px;border-radius:4px;background:var(--orD);color:var(--or);border:1px solid rgba(255,87,34,.25);margin-bottom:12px;}
+.pname{font-size:17px;font-weight:700;margin-bottom:4px;}
+.pprice{font-family:'Plus Jakarta Sans',sans-serif;font-size:34px;font-weight:800;line-height:1.1;margin-bottom:4px;}
+.pprice sup{font-size:15px;font-weight:600;vertical-align:super;}
+.pprice span{font-size:13px;font-weight:400;color:var(--t1);}
+.pdesc{font-size:12px;color:var(--t1);margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,.06);}
+.pfeats{list-style:none;margin-bottom:22px;}
+.pfeats li{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--t1);margin-bottom:9px;line-height:1.5;}
+.ck{color:var(--gr);flex-shrink:0;margin-top:1px;}.ck2{color:var(--t2);flex-shrink:0;margin-top:1px;}
+.pbtn{width:100%;padding:12px;border-radius:8px;font-family:'Noto Sans SC',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .14s;border:none;}
+.pbtn.pm{background:var(--or);color:#fff;box-shadow:0 3px 0 #7A1E00,0 5px 14px var(--orG);}
+.pbtn.pm:hover{background:var(--or2);transform:translateY(-1px);}
+.pbtn.pm:active{transform:translateY(2px);box-shadow:0 1px 0 #7A1E00;}
+.pbtn.po{background:transparent;color:var(--t0);border:1px solid rgba(255,255,255,.12);}
+.pbtn.po:hover{border-color:rgba(255,255,255,.25);}
+
+/* ── FAQ ── */
+.faqlist{display:flex;flex-direction:column;}
+.fitem{border-bottom:1px solid rgba(255,255,255,.05);padding:18px 0;cursor:pointer;}
+.fitem:last-child{border-bottom:none;}
+.fq{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600;user-select:none;}
+.ficon{color:var(--t2);font-size:17px;transition:transform .22s,color .22s;flex-shrink:0;}
+.fitem.open .ficon{transform:rotate(45deg);color:var(--or);}
+.fa{font-size:13px;color:var(--t1);line-height:1.8;max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s ease;}
+.fitem.open .fa{max-height:180px;padding-top:10px;}
+
+/* ── FINAL CTA ── */
+.fcta{
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:22px;padding:60px 44px;text-align:center;position:relative;overflow:hidden;
+}
+.fcta::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--or),var(--go),transparent);}
+.fglow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;height:280px;pointer-events:none;background:radial-gradient(ellipse,rgba(255,87,34,.07),transparent 60%);}
+.ftitle{font-family:'Plus Jakarta Sans',sans-serif;font-size:clamp(26px,3.8vw,40px);font-weight:800;line-height:1.15;letter-spacing:-.02em;margin-bottom:12px;position:relative;}
+.ftitle .cn{font-family:'Noto Sans SC',sans-serif;font-weight:900;}
+.fsub{font-size:14px;color:var(--t1);max-width:400px;margin:0 auto 28px;line-height:1.85;position:relative;}
+.fbtns{display:flex;gap:10px;justify-content:center;position:relative;}
+
+/* ── FOOTER ── */
+footer{border-top:1px solid rgba(255,255,255,.05);padding:28px 44px;display:flex;align-items:center;justify-content:space-between;}
+.flogo{font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:800;display:flex;align-items:center;gap:7px;}
+.fmeta{font-size:11px;color:var(--t2);}
+
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 10px var(--or)}50%{opacity:.6;box-shadow:0 0 4px var(--or)}}
+::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="nlogo"><div class="ndot"></div>VIRA</div>
+  <div class="nlinks">
+    <a href="#how">工作原理</a>
+    <a href="#agents">AI智能体</a>
+    <a href="#pricing">定价</a>
+  </div>
+  <button class="ncta">免费试用 →</button>
+</nav>
+
+<!-- ══════════════ HERO ══════════════ -->
+<div class="hero">
+  <div class="hglow"><div class="hg1"></div><div class="hg2"></div><div class="hg3"></div></div>
+
+  <div class="hbadge rv"><div class="hbdot"></div>多模态 · RAG知识库 · 4个AI智能体协同</div>
+
+  <h1 class="rv d1">
+    <span class="h1cn">上传竞品视频</span><br>
+    <span class="h1acc h1cn">30秒知道为什么它爆</span>
+  </h1>
+
+  <p class="hsub rv d2">
+    不是让AI帮你<strong>写内容</strong>——<br>
+    而是真正看懂竞品，告诉你爆款密码在哪，<strong>你的版本怎么改</strong>。
+  </p>
+
+  <div class="hbtns rv d3">
+    <button class="bprim">🎬 上传视频，免费分析</button>
+    <button class="bghost">看演示 →</button>
+  </div>
+
+  <div class="proof rv d4">
+    <div class="pitem">🔥 <span class="pnum">2,400+</span> 创作者在用</div>
+    <div class="pitem">⚡ 平均 <span class="pnum">25秒</span> 出完整报告</div>
+    <div class="pitem">📈 完播率平均 <span class="pnum">+28%</span> 改版后</div>
+  </div>
+</div>
+
+<!-- ══════════════ MOCK SCREEN ══════════════ -->
+<div class="w" style="padding-bottom:80px;">
+  <div class="mock rv">
+    <div class="mbar">
+      <div class="mdots"><div class="mdt mt1"></div><div class="mdt mt2"></div><div class="mdt mt3"></div></div>
+      <div class="mtitle">vira.ai · 正在分析「竞品爆款视频.mp4」· 已抽取4帧</div>
+    </div>
+    <div class="mbody">
+      <div class="mframes">
+        <div class="mf">🎬<div class="mfl">F1 · 0s</div></div>
+        <div class="mf">🔥<div class="mfl">F2 · 3s</div></div>
+        <div class="mf">✨<div class="mfl">F3 · 8s</div></div>
+        <div class="mf">🎯<div class="mfl">F4 · 15s</div></div>
+      </div>
+      <div class="magents">
+        <div class="mac mac-a">
+          <div class="maclbl" style="color:var(--cy)"><div class="macdot" style="background:var(--cy)"></div>AGENT A · 视觉提取</div>
+          <div class="macval">Hook类型: 悬念开场 ✓ &nbsp;<strong>Hook评分: 87/100</strong></div>
+        </div>
+        <div class="mac mac-b">
+          <div class="maclbl" style="color:var(--re)"><div class="macdot" style="background:var(--re)"></div>AGENT B · 合规审查</div>
+          <div class="macval">风险级别: <span style="color:var(--gr)">低</span> · 合规分 91</div>
+        </div>
+        <div class="mac mac-c">
+          <div class="maclbl" style="color:var(--pu)"><div class="macdot" style="background:var(--pu)"></div>AGENT C · 爆款预测</div>
+          <div class="macval">病毒指数: <strong>82/100</strong> · 完播率预估 68%</div>
+        </div>
+      </div>
+      <div class="msum">
+        <div class="mgrade">A</div>
+        <div class="mstxt"><strong>综合评分 88/100 · 高爆款潜力</strong><br>前3秒悬念Hook与目标受众高度匹配。建议将文案改为反常识结论式开场，预计完播率可从68%提升至82%，转化率+18%。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ BEFORE/AFTER ══════════════ -->
+<div class="bg-alt">
+<div class="w sec" id="value">
+  <div class="slbl rv">真实的改变</div>
+  <h2 class="sh rv d1"><span class="cn">不只是AI分析<br>是可执行的改版方案</span></h2>
+  <p class="sp rv d2">每一条建议都量化到具体数字，每一个问题都给出可直接执行的替换方案。</p>
+
+  <div class="bagrid">
+    <div class="bacard rvl">
+      <div class="bahead bef">BEFORE · 以前你的工作方式</div>
+      <div class="barow"><span class="bai">😮‍💨</span>手动反复刷竞品视频，靠感觉记录"好像是这个原因"</div>
+      <div class="barow"><span class="bai">📋</span>用Excel记录截图+主观备注，无法复用，下次还得重来</div>
+      <div class="barow"><span class="bai">🚫</span>发出去才发现文案有违规词，平台限流，投放白费</div>
+      <div class="barow"><span class="bai">⏰</span>3天时间做出来的竞品分析，老板说"不够深入"</div>
+      <div class="barow"><span class="bai">🎲</span>改版靠猜，拍脑袋，效果好不好要等数据回来才知道</div>
+    </div>
+    <div class="bacard rvr">
+      <div class="bahead aft">AFTER · 有VIRA的工作方式</div>
+      <div class="barow pos"><span class="bai" style="color:var(--gr)">✓</span>上传视频，25秒得到结构化爆款公式分析</div>
+      <div class="barow pos"><span class="bai" style="color:var(--gr)">✓</span>四维知识库匹配，基于真实爆款规律，有据可查</div>
+      <div class="barow pos"><span class="bai" style="color:var(--gr)">✓</span>发布前合规扫描，高风险词精确标注并给出修改建议</div>
+      <div class="barow pos"><span class="bai" style="color:var(--gr)">✓</span>30分钟出一份有数据、有建议、有改版方案的完整报告</div>
+      <div class="barow pos"><span class="bai" style="color:var(--gr)">✓</span>改版建议量化预测效果（完播率+X%），有依据有底气</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ HOW ══════════════ -->
+<div class="w sec" id="how">
+  <div class="slbl rv">工作原理</div>
+  <h2 class="sh rv d1"><span class="cn">3步，从视频到改版方案</span></h2>
+  <p class="sp rv d2">不是魔法，是真实的AI技术协同——浏览器抽帧、知识库检索、多Agent并行分析。</p>
+
+  <div class="steplist">
+    <div class="step rv">
+      <div class="snum">01</div>
+      <div>
+        <span class="sico">🎬</span>
+        <div class="stitle">上传视频或截图</div>
+        <div class="sdesc">直接拖入MP4/MOV/AVI，或上传产品截图。系统自动从视频中提取关键帧，无需手动截图。视频文件完全在浏览器本地处理，不上传服务器。</div>
+        <div class="stags"><span class="stag or">浏览器 Canvas API 自动抽帧</span><span class="stag">隐私安全 · 本地处理</span></div>
+      </div>
+    </div>
+    <div class="step rv d1">
+      <div class="snum">02</div>
+      <div>
+        <span class="sico">⚡</span>
+        <div class="stitle">4个AI智能体并行分析</div>
+        <div class="sdesc">视觉提取、合规审查、爆款预测三个Agent同步运行，不到20秒完成。综合Agent汇总给出最终判决。每个Agent都挂载专属RAG知识库，有据可依。</div>
+        <div class="stags"><span class="stag go">Multi-Agent × RAG 知识库增强</span><span class="stag">Promise.all 并行架构</span></div>
+      </div>
+    </div>
+    <div class="step rv d2">
+      <div class="snum">03</div>
+      <div>
+        <span class="sico">📋</span>
+        <div class="stitle">得到可执行的改版方案</div>
+        <div class="sdesc">不是"建议你优化Hook"——而是"把第2秒的文字改成XX，预计完播率从65%提升到81%"这种级别的具体建议。S/A/B/C/D评级 + 逐条改版指令 + 发布时机建议。</div>
+        <div class="stags"><span class="stag gr">结构化输出 · 可直接执行</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ AGENTS ══════════════ -->
+<div class="bg-alt">
+<div class="w sec" id="agents">
+  <div class="slbl rv">AI 智能体</div>
+  <h2 class="sh rv d1"><span class="cn">4个专家Agent<br>各司其职，协同出击</span></h2>
+  <p class="sp rv d2">每个Agent都有专属的知识库和分析视角，结合在一起才是完整的判断。</p>
+
+  <!-- A B C 三列满铺，不留空 -->
+  <div class="ag3col">
+    <div class="agcard ag-a rv">
+      <div class="agid" style="color:var(--cy)"><div class="agdot" style="background:var(--cy)"></div>AGENT A</div>
+      <span class="agico">👁</span>
+      <div class="agname">视觉提取</div>
+      <div class="agsub">逐帧分析画面，比人眼更精准</div>
+      <div class="agdesc">分析前3秒Hook类型、画面色彩情绪、文字布局质量、切换节奏——和爆款规律知识库对比，给出Hook评分。</div>
+      <div class="agtags">
+        <span class="agtag">Hook类型识别</span>
+        <span class="agtag">色彩情绪分析</span>
+        <span class="agtag">视觉评分</span>
+      </div>
+    </div>
+
+    <div class="agcard ag-b rv d1">
+      <div class="agid" style="color:var(--re)"><div class="agdot" style="background:var(--re)"></div>AGENT B</div>
+      <span class="agico">🛡</span>
+      <div class="agname">合规审查</div>
+      <div class="agsub">发布前的最后一道防线</div>
+      <div class="agdesc">比对平台合规规则库，精确识别极限用语、医疗声称、金融承诺等高风险内容，给出风险级别和修改建议。</div>
+      <div class="agtags">
+        <span class="agtag">违规词检测</span>
+        <span class="agtag">风险分级</span>
+        <span class="agtag">修改建议</span>
+      </div>
+    </div>
+
+    <div class="agcard ag-c rv d2">
+      <div class="agid" style="color:var(--pu)"><div class="agdot" style="background:var(--pu)"></div>AGENT C</div>
+      <span class="agico">📈</span>
+      <div class="agname">增长预测</div>
+      <div class="agsub">用数据说话，不靠直觉</div>
+      <div class="agdesc">基于情绪强度、实用价值、身份认同、稀缺感、社交货币五维病毒因子模型，预测完播率和传播潜力。</div>
+      <div class="agtags">
+        <span class="agtag">完播率预测</span>
+        <span class="agtag">受众画像</span>
+        <span class="agtag">发布时机</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- D 横向全宽，视觉上是"汇总一切"的感觉 -->
+  <div class="agd rv d3">
+    <div class="agd-inner">
+      <div class="agd-left">
+        <div class="agid" style="color:var(--go)"><div class="agdot" style="background:var(--go)"></div>AGENT D · 综合汇总</div>
+        <span class="agico">✦</span>
+        <div class="agname">重构总监</div>
+        <div class="agsub">读取A+B+C全部结果，输出最终判决</div>
+        <div class="agdesc">综合三个专家Agent的分析，给出S/A/B/C/D综合评级，以及前3秒改法、视觉升级点、文案优化方向、发布策略的完整改版方案。</div>
+      </div>
+      <div class="agd-right">
+        <div class="dout-lbl">OUTPUT EXAMPLE</div>
+        <div class="dgrade-row">
+          <div class="dgrade-box">A</div>
+          <div class="dgrade-info"><strong>88/100 · 高爆款潜力</strong><br>改版后预计+24%完播率</div>
+        </div>
+        <div class="dreco">改版方向：将第2秒文字换为反常识结论式开场，删除<strong>"最佳"等极限词</strong>，在视频第8秒增加利益点强化留存……</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ TESTIMONIALS ══════════════ -->
+<div class="w sec">
+  <div class="slbl rv">用户评价</div>
+  <h2 class="sh rv d1"><span class="cn">他们用了之后说</span></h2>
+
+  <div class="tgrid">
+    <div class="tcard rv">
+      <div class="tstars">★★★★★</div>
+      <div class="ttxt">以前分析一个竞品视频要花半天，现在25秒。关键是建议真的很具体，不是那种"建议优化视觉呈现"的废话。</div>
+      <div class="tperson"><div class="tav">🎬</div><div><div class="tname">陈 ××</div><div class="trole">美妆品牌内容总监</div></div></div>
+    </div>
+    <div class="tcard rv d1">
+      <div class="tstars">★★★★★</div>
+      <div class="ttxt">合规检查这个功能太救命了，我们之前有一条投了3万的素材因为有极限词被限流，现在发布前必查。</div>
+      <div class="tperson"><div class="tav">💼</div><div><div class="tname">王 ××</div><div class="trole">MCN运营总监</div></div></div>
+    </div>
+    <div class="tcard rv d2">
+      <div class="tstars">★★★★☆</div>
+      <div class="ttxt">作为独立创作者，最有价值的是爆款因子评分，能量化地知道哪个维度需要提升，不再全靠感觉。</div>
+      <div class="tperson"><div class="tav">✨</div><div><div class="tname">李 ××</div><div class="trole">百万粉创作者</div></div></div>
+    </div>
+  </div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ PRICING ══════════════ -->
+<div class="bg-alt">
+<div class="w sec" id="pricing">
+  <div class="slbl rv">定价</div>
+  <h2 class="sh rv d1"><span class="cn">简单透明，按需选择</span></h2>
+  <p class="sp rv d2">所有计划都包含核心的4个Agent分析和RAG知识库。免费计划不需要信用卡。</p>
+
+  <div class="pgrid rv">
+    <div class="pcard">
+      <div class="pname">免费版</div>
+      <div class="pprice">¥<span style="font-size:36px">0</span></div>
+      <div class="pdesc">入门体验，无需信用卡</div>
+      <ul class="pfeats">
+        <li><span class="ck">✓</span>每月5次完整分析</li>
+        <li><span class="ck">✓</span>4个Agent基础分析</li>
+        <li><span class="ck">✓</span>美妆/电商/数码知识库</li>
+        <li><span class="ck2">—</span><span style="color:var(--t2)">批量对比分析</span></li>
+        <li><span class="ck2">—</span><span style="color:var(--t2)">PDF报告导出</span></li>
+      </ul>
+      <button class="pbtn po">免费开始</button>
+    </div>
+
+    <div class="pcard feat">
+      <div class="pbadge">MOST POPULAR</div>
+      <div class="pname">Pro 专业版</div>
+      <div class="pprice"><sup>¥</sup><span style="font-size:46px;background:linear-gradient(110deg,var(--or),var(--go));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">299</span><span>/月</span></div>
+      <div class="pdesc">适合品牌内容团队和独立创作者</div>
+      <ul class="pfeats">
+        <li><span class="ck">✓</span>无限次分析</li>
+        <li><span class="ck">✓</span>4个Agent完整分析</li>
+        <li><span class="ck">✓</span>全行业知识库（美妆/电商/游戏）</li>
+        <li><span class="ck">✓</span>批量视频对比分析</li>
+        <li><span class="ck">✓</span>PDF报告一键导出</li>
+        <li><span class="ck">✓</span>飞书/Notion集成</li>
+      </ul>
+      <button class="pbtn pm">立即升级 Pro</button>
+    </div>
+
+    <div class="pcard">
+      <div class="pbadge" style="background:var(--puD);color:var(--pu);border-color:rgba(155,114,255,.25)">ENTERPRISE</div>
+      <div class="pname">企业版</div>
+      <div class="pprice" style="font-size:26px;font-weight:700;line-height:1.3">联系我们</div>
+      <div class="pdesc">适合MCN机构、营销代理公司</div>
+      <ul class="pfeats">
+        <li><span class="ck">✓</span>Pro版全部功能</li>
+        <li><span class="ck">✓</span>私有知识库定制</li>
+        <li><span class="ck">✓</span>API开放接入</li>
+        <li><span class="ck">✓</span>团队多账号管理</li>
+        <li><span class="ck">✓</span>专属客户成功经理</li>
+        <li><span class="ck">✓</span>SLA服务保障</li>
+      </ul>
+      <button class="pbtn po">联系销售团队</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ FAQ ══════════════ -->
+<div class="w sec">
+  <div class="slbl rv">常见问题</div>
+  <h2 class="sh rv d1"><span class="cn">你可能想问的</span></h2>
+
+  <div class="faqlist rv d2">
+    <div class="fitem open">
+      <div class="fq" onclick="faq(this)">视频文件会被保存在服务器上吗？<span class="ficon">+</span></div>
+      <div class="fa">不会。视频抽帧完全在你的浏览器本地完成，只有处理后的帧图片会发送给AI进行分析，原始视频文件不会上传或保存到任何服务器。</div>
+    </div>
+    <div class="fitem">
+      <div class="fq" onclick="faq(this)">支持哪些视频格式？<span class="ficon">+</span></div>
+      <div class="fa">支持MP4、MOV、AVI等主流格式，也可以直接上传截图（JPG/PNG）。如果是短视频平台内容，截图导出后上传同样有效。</div>
+    </div>
+    <div class="fitem">
+      <div class="fq" onclick="faq(this)">分析结果有多准确？<span class="ficon">+</span></div>
+      <div class="fa">基于真实爆款规律知识库和平台合规规则库，分析结果有明确的知识来源和依据。但AI建议仅供参考，最终决策仍需结合你对用户和平台的了解。我们会持续用用户反馈优化知识库精准度。</div>
+    </div>
+    <div class="fitem">
+      <div class="fq" onclick="faq(this)">分析竞品视频会有版权问题吗？<span class="ficon">+</span></div>
+      <div class="fa">VIRA仅用于内容分析研究，不存储、不传播、不复现任何视频内容。请确保你对分析的视频有合理的研究使用权。</div>
+    </div>
+    <div class="fitem">
+      <div class="fq" onclick="faq(this)">知识库是怎么更新的？<span class="ficon">+</span></div>
+      <div class="fa">知识库由内容分析师团队每月人工核查更新，涵盖最新平台合规政策变化和新兴爆款规律。Pro版用户会第一时间获取最新知识库。</div>
+    </div>
+  </div>
+</div>
+
+<hr class="sdivider">
+
+<!-- ══════════════ FINAL CTA ══════════════ -->
+<div class="w" style="padding:0 24px 88px;">
+  <div class="fcta rv">
+    <div class="fglow"></div>
+    <div class="ftitle"><span class="cn">下一条爆款<br>从看懂竞品开始</span></div>
+    <p class="fsub">不靠感觉，不靠运气。上传一个竞品视频，25秒后你就知道接下来该怎么做。</p>
+    <div class="fbtns">
+      <button class="bprim">🎬 免费开始分析</button>
+      <button class="bghost">看演示 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="flogo"><div class="ndot"></div>VIRA</div>
+  <div class="fmeta">© 2026 VIRA · 爆款侦察兵 · Powered by Claude API · Multi-Agent + RAG</div>
+</footer>
+
+<script>
+// Scroll reveal
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.1,rootMargin:'0px 0px -36px 0px'});
+document.querySelectorAll('.rv,.rvl,.rvr').forEach(el=>io.observe(el));
+
+// FAQ
+function faq(el){
+  const it=el.parentElement,op=it.classList.contains('open');
+  document.querySelectorAll('.fitem').forEach(i=>i.classList.remove('open'));
+  if(!op)it.classList.add('open');
+}
+
+// Nav scroll
+window.addEventListener('scroll',()=>{
+  document.getElementById('nav').style.background=
+    window.scrollY>40?'rgba(15,13,10,.97)':'rgba(15,13,10,.88)';
+});
+</script>
+</body>
+</html>
