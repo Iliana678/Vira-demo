@@ -741,7 +741,7 @@ hr { border-color: rgba(100,140,255,.07) !important; }
 def _init_state() -> None:
     defaults = {
         "session_id":          str(uuid.uuid4())[:8],
-        "api_key":             os.getenv("OPENAI_API_KEY", ""),
+        "api_key":             (st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")),
         "model":               "gpt-4o",
         "rag_text":            "",
         "workflow_result":     None,
@@ -1307,23 +1307,27 @@ with st.sidebar:
                color:#3D4F68;">· 爆款侦察兵</span>
 </div>
 """, unsafe_allow_html=True)
-    st.markdown(
-        '<div style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.18em;'
-        'color:#3D4F68;margin-bottom:8px;">// API 配置</div>',
-        unsafe_allow_html=True
-    )
-    api_in = st.text_input(
-        "OpenAI API Key", type="password",
-        value=st.session_state.api_key, placeholder="sk-...",
-        help="platform.openai.com 获取，或写入 .env 文件",
-    )
-    if api_in:
-        st.session_state.api_key = api_in
+    # API Key 和模型选择：仅管理员可见
+    # 普通用户直接使用后端配置的 key，无需填写也看不到
+    _is_admin_view = _admin_email and _email_s.lower() == _admin_email
+    if _is_admin_view:
+        st.markdown(
+            '<div style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.18em;'
+            'color:#3D4F68;margin-bottom:8px;">// API 配置（仅管理员）</div>',
+            unsafe_allow_html=True
+        )
+        api_in = st.text_input(
+            "OpenAI API Key", type="password",
+            value=st.session_state.api_key, placeholder="sk-...",
+            help="platform.openai.com 获取，或写入 .env 文件",
+        )
+        if api_in:
+            st.session_state.api_key = api_in
 
-    st.session_state.model = st.selectbox(
-        "模型", ["gpt-4o", "gpt-4o-mini"], index=0,
-        help="gpt-4o 视觉最强；gpt-4o-mini 更快省 Token",
-    )
+        st.session_state.model = st.selectbox(
+            "模型", ["gpt-4o", "gpt-4o-mini"], index=0,
+            help="gpt-4o 视觉最强；gpt-4o-mini 更快省 Token",
+        )
 
     st.divider()
 
@@ -1675,7 +1679,7 @@ if not st.session_state.workflow_result:
                     unsafe_allow_html=True,
                 )
                 if not st.session_state.api_key:
-                    st.warning("⚠️ 请先在侧边栏填入 OpenAI API Key")
+                    st.error("⚠️ 服务配置异常，请联系管理员")
                 else:
                     _lang_opt = st.selectbox(
                         "语言（留空自动检测）",
@@ -1872,7 +1876,7 @@ if not st.session_state.workflow_result:
         uploaded = True   # 保持后续逻辑正常触发
 
         if not st.session_state.api_key:
-            st.warning("⚠️ 请在左侧侧边栏填入 OpenAI API Key")
+            st.error("⚠️ 服务配置异常，请联系管理员")
         else:
             # ── 额度检查（总报告份数 + 今日素材条数）────────────────────────
             _cur_email = (st.session_state.get("user_info") or {}).get("email", "")
@@ -2896,7 +2900,7 @@ if st.session_state.get("cs_open", False):
             st.markdown(_cs_q)
 
         if not st.session_state.api_key:
-            _cs_ans = "请先在侧边栏填入 OpenAI API Key 才能使用 AI 客服哦～"
+            _cs_ans = "AI 客服暂时不可用，请稍后再试"
             cs_history.append({"role": "assistant", "content": _cs_ans})
             with st.chat_message("assistant"):
                 st.markdown(_cs_ans)
