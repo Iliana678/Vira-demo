@@ -881,7 +881,7 @@ def _render_auth_page() -> None:
             _pwd   = st.text_input("密码 *",       placeholder="至少 6 位", type="password")
             _pwd2  = st.text_input("确认密码 *",   placeholder="再输入一次", type="password")
             _sub   = st.form_submit_button(
-                "注册账户 →  （免费获得 5 次分析额度）", use_container_width=True, type="primary"
+                "注册账户 →  （免费获得 5 份竞品报告）", use_container_width=True, type="primary"
             )
         if _sub:
             if not _email or not _pwd:
@@ -893,7 +893,7 @@ def _render_auth_page() -> None:
                     from services.auth import register as _auth_reg
                     _ok, _msg = _auth_reg(_email, _pwd, _name)
                     if _ok:
-                        _msg_slot.success("✅ 注册成功！已赠送 5 次免费分析额度，请登录")
+                        _msg_slot.success("✅ 注册成功！已赠送 5 份免费报告额度，请登录")
                         st.session_state.auth_mode = "login"
                         st.rerun()
                     else:
@@ -1134,38 +1134,61 @@ def _render_strategy_card(wf) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
-    # ── 用户信息 + 积分 + 退出登录 ───────────────────────────────────────────
+    # ── 用户信息 + 额度看板 + 退出登录 ──────────────────────────────────────
     _u = st.session_state.get("user_info") or {}
     _display = _u.get("display_name") or _u.get("email", "用户")
     _email_s = _u.get("email", "")
-    # 从数据库实时读取积分（保证准确，不依赖 session_state 缓存）
     try:
-        from services.auth import get_credits as _get_credits
-        _credits = _get_credits(_email_s) if _email_s else 0
+        from services.auth import get_credits as _get_credits, get_daily_status as _get_ds
+        _credits     = _get_credits(_email_s) if _email_s else 0
+        _ds          = _get_ds(_email_s)      if _email_s else {}
     except Exception:
         _credits = _u.get("credits", 0)
+        _ds      = {}
+    _is_pro      = _ds.get("is_pro", False)
+    _daily_used  = _ds.get("daily_used",  0)
+    _daily_limit = _ds.get("daily_limit", 3)
+    _daily_rem   = _ds.get("remaining",   _daily_limit)
+
+    # 总报告份数颜色（Pro 不显示总额度）
     _credits_color = "#22C55E" if _credits > 2 else "#F59E0B" if _credits > 0 else "#EF4444"
-    _credits_label = f"{_credits} 次" if _credits > 0 else "已用完"
+    _credits_label = f"{_credits} 份" if _credits > 0 else "已用完"
+    # 今日素材进度颜色
+    _day_color = "#22C55E" if _daily_rem > 0 else "#EF4444"
+    _pro_badge = '<span style="font-size:9px;background:linear-gradient(90deg,#6366F1,#A855F7);color:#fff;padding:1px 6px;border-radius:20px;font-weight:700;margin-left:4px;">PRO</span>' if _is_pro else ""
+
+    _credits_row = "" if _is_pro else f"""
+  <div style="display:flex;align-items:center;justify-content:space-between;
+              margin-bottom:5px;">
+    <span style="font-size:10px;color:#64748B;">剩余报告份数</span>
+    <span style="font-size:12px;font-weight:800;color:{_credits_color};">{_credits_label}</span>
+  </div>"""
+
     st.markdown(f"""
 <div style="padding:8px 0 12px;border-bottom:1px solid rgba(139,92,246,.10);
             margin-bottom:12px;">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
     <div style="width:30px;height:30px;border-radius:8px;flex-shrink:0;
                 background:linear-gradient(135deg,#6366F1,#A855F7);
                 display:flex;align-items:center;justify-content:center;
-                font-size:13px;font-weight:700;color:#fff;">
-      {_display[:1].upper()}
-    </div>
+                font-size:13px;font-weight:700;color:#fff;">{_display[:1].upper()}</div>
     <div>
-      <div style="font-size:12px;font-weight:700;color:#E2E8F0;
-                  line-height:1.3;">{_display}</div>
+      <div style="font-size:12px;font-weight:700;color:#E2E8F0;line-height:1.3;">
+        {_display}{_pro_badge}</div>
       <div style="font-size:10px;color:#3D4F68;">{_email_s}</div>
     </div>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;
-              background:rgba(99,102,241,.08);border-radius:8px;padding:6px 10px;">
-    <span style="font-size:11px;color:#94A3B8;">剩余分析次数</span>
-    <span style="font-size:13px;font-weight:800;color:{_credits_color};">{_credits_label}</span>
+  <div style="background:rgba(99,102,241,.07);border-radius:9px;padding:8px 10px;">
+    {_credits_row}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <span style="font-size:10px;color:#64748B;">今日素材</span>
+      <span style="font-size:12px;font-weight:800;color:{_day_color};">{_daily_used} / {_daily_limit} 条</span>
+    </div>
+    <div style="height:4px;background:rgba(255,255,255,.07);border-radius:4px;overflow:hidden;">
+      <div style="height:100%;width:{min(100, round(_daily_used/_daily_limit*100)) if _daily_limit else 0}%;
+                  background:{'#22C55E' if _daily_rem>0 else '#EF4444'};
+                  border-radius:4px;transition:width .4s;"></div>
+    </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1758,35 +1781,43 @@ if not st.session_state.workflow_result:
         if not st.session_state.api_key:
             st.warning("⚠️ 请在左侧侧边栏填入 OpenAI API Key")
         else:
-            # ── 积分检查 ──────────────────────────────────────────────────────
+            # ── 额度检查（总报告份数 + 今日素材条数）────────────────────────
             _cur_email = (st.session_state.get("user_info") or {}).get("email", "")
             try:
-                from services.auth import get_credits as _gc
-                _cur_credits = _gc(_cur_email) if _cur_email else 0
+                from services.auth import get_credits as _gc, get_daily_status as _gds
+                _cur_credits  = _gc(_cur_email)  if _cur_email else 0
+                _daily_status = _gds(_cur_email) if _cur_email else {}
             except Exception:
-                _cur_credits = 1  # 读取失败时放行，避免误拦截
-            if _cur_credits <= 0:
+                _cur_credits  = 1
+                _daily_status = {"blocked": False, "daily_used": 0,
+                                 "daily_limit": 3, "remaining": 3, "is_pro": False}
+
+            _is_pro        = _daily_status.get("is_pro", False)
+            _daily_blocked = _daily_status.get("blocked", False)
+            _no_credits    = (not _is_pro) and (_cur_credits <= 0)
+            _blocked       = _no_credits or _daily_blocked
+
+            # ── 无报告额度：升级弹窗 ──────────────────────────────────────
+            if _no_credits:
                 st.markdown("""
 <div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.18);
             border-radius:14px;padding:20px 22px;margin:4px 0 12px;">
   <div style="font-size:15px;font-weight:800;color:#E2E8F0;margin-bottom:4px;">
-    🔒 本月免费额度已用完
+    🔒 免费报告额度已用完
   </div>
   <div style="font-size:12px;color:#64748B;margin-bottom:16px;">
-    升级订阅，解锁无限分析次数
+    升级 Pro · 每日最多分析 <b style="color:#A78BFA;">30 条</b>竞品素材，无限生成爆款脚本
   </div>
-  <a href="mailto:hi@vira.ai?subject=申请订阅VIRA&body=我想订阅VIRA，请联系我。"
+  <a href="mailto:hi@vira.ai?subject=申请订阅VIRA Pro&body=我想订阅VIRA Pro，请联系我。"
      style="display:block;text-align:center;background:linear-gradient(135deg,#6366F1,#A855F7);
             color:#fff;font-size:13px;font-weight:700;padding:11px 0;border-radius:9px;
             text-decoration:none;letter-spacing:.03em;margin-bottom:6px;">
-    ✨ 订阅 VIRA Pro →
+    ✨ 升级 VIRA Pro →
   </a>
   <div style="font-size:10px;color:#3D4F68;text-align:center;margin-bottom:14px;">
     发送后我们会在 24h 内联系你
   </div>
 </div>""", unsafe_allow_html=True)
-
-                # 礼品码兑换入口（小字，次要入口）
                 with st.expander("有礼品码？点击兑换", expanded=False):
                     _gift_input = st.text_input(
                         "输入 6 位礼品码",
@@ -1811,8 +1842,19 @@ if not st.session_state.workflow_result:
                                 st.error(f"兑换失败：{_re}")
                         else:
                             st.warning("请输入礼品码")
+
+            # ── 今日素材上限已到（总额度还有，但今天用完了）────────────────
+            elif _daily_blocked:
+                _dl = _daily_status.get("daily_limit", 3)
+                _tier = "Pro · 每日 30 条" if _is_pro else "免费版 · 每日 3 条"
+                st.warning(
+                    f"⏰ 今日 {_tier} 素材分析额度已用完，明天零点自动重置。"
+                    + ("" if _is_pro else "  升级 Pro 可提升至每日 30 条。")
+                )
+
             # ========== 🚀 批量分析核心执行逻辑 ==========
-            if st.button(f"🚀 启动 VIRA 四 Agent 分析（全部 {n} 张）", type="primary", use_container_width=True, disabled=(_cur_credits <= 0)):
+            if st.button(f"🚀 启动分析（{n} 条竞品素材）", type="primary",
+                         use_container_width=True, disabled=_blocked):
                 _batch_new: list[dict] = []
 
                 with st.status(f"🤖 VIRA 批量分析中（共 {n} 张）...", expanded=True) as status_ctx:
@@ -1922,18 +1964,17 @@ if not st.session_state.workflow_result:
                     st.session_state.image_name      = _first["name"]
                     st.session_state.image_data      = _first["image_data"]
 
-                # ── 扣减积分（按实际成功张数扣，最少扣 1 次）────────────────
+                # ── 扣减报告额度 + 累加今日素材计数 ──────────────────────
                 _ok_count = sum(1 for b in _batch_new if b["result"] and b["result"].success)
                 if _ok_count > 0 and _cur_email:
                     try:
-                        from services.auth import deduct_credit as _dc
+                        from services.auth import deduct_credit as _dc, increment_daily as _id
                         _deduct_ok, _remain = _dc(_cur_email)
-                        if _deduct_ok:
-                            # 同步更新 session_state 里的积分缓存
-                            if st.session_state.get("user_info"):
-                                st.session_state.user_info["credits"] = _remain
+                        if _deduct_ok and st.session_state.get("user_info"):
+                            st.session_state.user_info["credits"] = _remain
+                        _id(_cur_email)  # 日计数 +1（内部自动处理跨天重置）
                     except Exception:
-                        pass  # 扣减失败不影响使用体验
+                        pass
                 st.rerun()
 
 
