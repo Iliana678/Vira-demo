@@ -143,7 +143,7 @@ body, .stApp {
     --t2: #3D4F68;   /* 三级   — 深灰 */
 
     /* ─ 基底（极深暗紫底，比纯黑多一丝暖调）*/
-    --bg: #06021A;
+    --bg: #080C1E;
 
     /* ─ 玻璃材质（边框带薰衣草暖调）*/
     --glass-bg:   rgba(255,255,255,.025);
@@ -152,17 +152,25 @@ body, .stApp {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   全局背景：极深靛蓝 + 左上角紫色弥散光晕 + 右下角靛蓝弥散光晕
+   全局背景：深空蓝（比纯黑更有层次）+ 动态弥散光晕
    ══════════════════════════════════════════════════════════════════════════ */
+@keyframes vira-bg-shift {
+    0%,100% { background-position: 0% 0%, 100% 100%, 50% 50%; }
+    33%     { background-position: 8% 4%,  92%  88%,  55% 45%; }
+    66%     { background-position: 3% 8%,  97%  95%,  48% 54%; }
+}
 .stApp,
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 body {
-    background-color: #06021A !important;
+    background-color: #080C1E !important;
     background-image:
-        radial-gradient(ellipse 78% 68% at 6%   5%,  rgba(168,85,247,.17)   0%, transparent 65%),
-        radial-gradient(ellipse 68% 58% at 96%  94%, rgba(99,102,241,.16)   0%, transparent 65%),
-        radial-gradient(ellipse 50% 44% at 50%  48%, rgba(139,92,246,.05)   0%, transparent 60%) !important;
+        radial-gradient(ellipse 70% 60% at 8%   6%,  rgba(168,85,247,.22)  0%, transparent 65%),
+        radial-gradient(ellipse 60% 55% at 94%  92%, rgba(99,102,241,.20)  0%, transparent 65%),
+        radial-gradient(ellipse 55% 45% at 52%  80%, rgba(56,189,248,.08)  0%, transparent 60%),
+        radial-gradient(ellipse 40% 35% at 50%  50%, rgba(139,92,246,.06)  0%, transparent 55%) !important;
+    background-size: 200% 200% !important;
+    animation: vira-bg-shift 18s ease-in-out infinite !important;
     color: var(--t0) !important;
     font-family: 'Noto Sans SC', sans-serif !important;
 }
@@ -174,7 +182,7 @@ body {
 
 /* ── 侧边栏：极深靛蓝 + 带蓝紫右边界 ──────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: rgba(5,2,20,.96) !important;
+    background: rgba(6,8,22,.96) !important;
     border-right: 1px solid rgba(139,92,246,.09) !important;
 }
 [data-testid="stSidebar"] * { color: var(--t1) !important; }
@@ -799,56 +807,171 @@ def _render_auth_page() -> None:
       · 将主内容区宽度压缩至 440px，居中显示毛玻璃卡片
       · 使用 st.form 做表单提交，msg_slot 在表单上方展示错误/成功提示
     """
-    # ── 鉴权页专属 CSS ─────────────────────────────────────────────────────────
+    # ── 鉴权页专属 CSS + 动态极光背景 ─────────────────────────────────────────
     st.markdown("""
 <style>
 /* 隐藏侧边栏与顶部导航 */
 [data-testid="stSidebar"],[data-testid="stSidebarNav"],
 .vira-nav { display:none!important; }
 
+/* ── 认证页背景：浅色极光 ── */
+@keyframes vira-auth-aurora {
+    0%,100% { background-position: 0% 50%; }
+    50%     { background-position: 100% 50%; }
+}
+@keyframes vira-orb-1 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    30%     { transform: translate(60px,-50px) scale(1.08); }
+    60%     { transform: translate(-40px,60px) scale(0.94); }
+}
+@keyframes vira-orb-2 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    40%     { transform: translate(-70px,40px) scale(1.06); }
+    70%     { transform: translate(50px,-60px) scale(0.96); }
+}
+@keyframes vira-orb-3 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    35%     { transform: translate(40px,70px) scale(1.1); }
+    65%     { transform: translate(-60px,-30px) scale(0.92); }
+}
+@keyframes vira-orb-4 {
+    0%,100% { transform: translate(0,0) scale(1); opacity:.35; }
+    50%     { transform: translate(-30px,50px) scale(1.12); opacity:.5; }
+}
+@keyframes vira-logo-pulse {
+    0%,100% { box-shadow: 0 8px 40px rgba(99,102,241,.5), 0 0 0 0 rgba(99,102,241,.3); }
+    50%     { box-shadow: 0 12px 60px rgba(168,85,247,.7), 0 0 30px 8px rgba(168,85,247,.2); }
+}
+@keyframes vira-fade-up {
+    from { opacity:0; transform:translateY(16px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], body {
+    background: #EEF0FF !important;
+    background-image: none !important;
+    animation: none !important;
+}
+
+/* 极光光球层 */
+.vira-aurora-bg {
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0; overflow: hidden;
+}
+.vira-orb {
+    position: absolute; border-radius: 50%;
+    filter: blur(80px);
+}
+.vira-orb-1 {
+    width: 650px; height: 650px;
+    background: radial-gradient(circle, rgba(196,181,253,.85) 0%, rgba(129,140,248,.4) 50%, transparent 75%);
+    top: -200px; left: -180px;
+    animation: vira-orb-1 14s ease-in-out infinite;
+}
+.vira-orb-2 {
+    width: 550px; height: 550px;
+    background: radial-gradient(circle, rgba(147,197,253,.8) 0%, rgba(96,165,250,.35) 50%, transparent 75%);
+    bottom: -180px; right: -150px;
+    animation: vira-orb-2 11s ease-in-out infinite;
+}
+.vira-orb-3 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(249,168,212,.75) 0%, rgba(192,132,252,.35) 50%, transparent 75%);
+    top: 35%; left: 55%;
+    animation: vira-orb-3 9s ease-in-out infinite;
+}
+.vira-orb-4 {
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(167,243,208,.7) 0%, rgba(94,234,212,.3) 50%, transparent 75%);
+    top: 65%; left: 5%;
+    animation: vira-orb-4 16s ease-in-out infinite;
+    opacity: .35;
+}
+
 /* 主容器：居中 + 限宽 */
 [data-testid="stMainBlockContainer"] {
-    max-width:460px!important;
-    padding:0 16px 48px!important;
-    margin:0 auto!important;
+    max-width: 460px !important;
+    padding: 0 16px 48px !important;
+    margin: 0 auto !important;
+    position: relative; z-index: 1;
 }
 
-/* st.form 毛玻璃卡片 */
+/* st.form 卡片：白色玻璃质感 */
 [data-testid="stForm"] {
-    background:rgba(255,255,255,.04)!important;
-    border:1px solid rgba(139,92,246,.22)!important;
-    border-radius:16px!important;
-    padding:28px 28px 20px!important;
-    backdrop-filter:blur(28px)!important;
-    -webkit-backdrop-filter:blur(28px)!important;
-    box-shadow:0 8px 48px rgba(41,79,187,.18),
-               inset 0 1px 0 rgba(255,255,255,.06)!important;
+    background: rgba(255,255,255,.82) !important;
+    border: 1px solid rgba(139,92,246,.18) !important;
+    border-radius: 20px !important;
+    padding: 32px 30px 24px !important;
+    backdrop-filter: blur(40px) !important;
+    -webkit-backdrop-filter: blur(40px) !important;
+    box-shadow: 0 20px 64px rgba(99,102,241,.14),
+                0 4px 16px rgba(0,0,0,.06),
+                inset 0 1px 0 rgba(255,255,255,.9) !important;
+    animation: vira-fade-up .5s ease both !important;
 }
 
-/* 表单内 label */
-[data-testid="stForm"] label p {
-    font-size:12px!important;
-    color:#7C8FA6!important;
-    letter-spacing:.04em!important;
+/* 表单内文字适配浅色背景 */
+[data-testid="stForm"] label p,
+[data-testid="stForm"] .stTextInput label p {
+    font-size: 12px !important;
+    color: #4B5563 !important;
+    letter-spacing: .04em !important;
+}
+[data-testid="stForm"] input {
+    background: rgba(248,247,255,.9) !important;
+    border: 1px solid rgba(139,92,246,.2) !important;
+    color: #1E1B4B !important;
+}
+[data-testid="stForm"] input::placeholder { color: #9CA3AF !important; }
+
+/* 按钮 */
+[data-testid="stForm"] .stButton button[kind="primaryFormSubmit"],
+[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+    background: linear-gradient(135deg,#6366F1 0%,#A855F7 100%) !important;
+    border: none !important;
+    box-shadow: 0 4px 20px rgba(99,102,241,.4) !important;
+    transition: transform .15s,box-shadow .15s !important;
+}
+[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 28px rgba(99,102,241,.55) !important;
+}
+
+/* 切换按钮（注册/登录互切） */
+.vira-auth-switch button {
+    color: #6366F1 !important;
+    background: transparent !important;
+    border: 1px solid rgba(99,102,241,.25) !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
 }
 </style>
+
+<!-- 极光光球层 -->
+<div class="vira-aurora-bg">
+  <div class="vira-orb vira-orb-1"></div>
+  <div class="vira-orb vira-orb-2"></div>
+  <div class="vira-orb vira-orb-3"></div>
+  <div class="vira-orb vira-orb-4"></div>
+</div>
 """, unsafe_allow_html=True)
 
     mode      = st.session_state.get("auth_mode", "login")
     is_signup = (mode == "signup")
-    title     = "创建账户" if is_signup else "欢迎回来"
-    subtitle  = "填写信息，开始使用 VIRA 爆款侦察兵" if is_signup else "登录你的 VIRA 账户继续分析"
+    title     = "创建你的账户" if is_signup else "欢迎回来 👋"
+    subtitle  = "注册即获 5 份免费竞品报告" if is_signup else "登录 VIRA，开始分析爆款素材"
 
     # ── Logo + 标题 ────────────────────────────────────────────────────────────
     st.markdown(f"""
-<div style="text-align:center;padding:52px 0 28px;">
-  <div style="width:60px;height:60px;border-radius:16px;margin:0 auto 18px;
+<div style="text-align:center;padding:52px 0 24px;animation:vira-fade-up .6s ease both;">
+  <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 18px;
               background:linear-gradient(135deg,#6366F1 0%,#A855F7 100%);
               display:inline-flex;align-items:center;justify-content:center;
-              font-size:28px;box-shadow:0 8px 36px rgba(99,102,241,.55);">✦</div>
-  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:23px;
-              font-weight:800;color:#E2E8F0;margin-bottom:6px;">{title}</div>
-  <div style="font-size:13px;color:#7C8FA6;line-height:1.6;">{subtitle}</div>
+              font-size:30px;animation:vira-logo-pulse 3s ease-in-out infinite;">✦</div>
+  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;
+              font-weight:800;color:#1E1B4B;margin-bottom:6px;letter-spacing:-.02em;">
+    {title}</div>
+  <div style="font-size:13px;color:#6B7280;line-height:1.6;">{subtitle}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -921,8 +1044,8 @@ def _render_auth_page() -> None:
 
     # ── 页脚 ──────────────────────────────────────────────────────────────────
     st.markdown("""
-<div style="text-align:center;margin-top:28px;font-size:11px;color:#3D4F68;
-            padding-bottom:32px;">
+<div style="text-align:center;margin-top:24px;font-size:11px;color:#9CA3AF;
+            padding-bottom:40px;letter-spacing:.02em;">
   注册即代表同意 VIRA 使用条款与隐私政策
 </div>
 """, unsafe_allow_html=True)
