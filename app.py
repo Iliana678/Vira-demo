@@ -981,7 +981,7 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
     mode      = st.session_state.get("auth_mode", "login")
     is_signup = (mode == "signup")
     title     = "创建你的账户" if is_signup else "欢迎回来 👋"
-    subtitle  = "注册即获 5 份免费竞品报告" if is_signup else "登录 VIRA，开始分析爆款素材"
+    subtitle  = "赠 5 份竞品报告 · 内测阶段免费" if is_signup else "登录 VIRA，开始分析爆款素材"
 
     # ── Logo + 标题 ────────────────────────────────────────────────────────────
     st.markdown(f"""
@@ -1098,8 +1098,13 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
             _email = st.text_input("邮箱地址 *",   placeholder="name@example.com")
             _pwd   = st.text_input("密码 *",       placeholder="至少 6 位", type="password")
             _pwd2  = st.text_input("确认密码 *",   placeholder="再输入一次", type="password")
+            _category = st.selectbox(
+                "主营品类（可选）",
+                ["请选择", "美妆 / 个护", "食品 / 饮料", "3C / 数码", "服装 / 配饰", "其他"],
+                index=0,
+            )
             _sub   = st.form_submit_button(
-                "免费注册  →  获得 5 份竞品报告", use_container_width=True, type="primary"
+                "✦ 免费开始 · 赠 5 份报告", use_container_width=True, type="primary"
             )
         if _sub:
             if not _email or not _pwd:
@@ -1436,6 +1441,82 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
 .lp-feat-title{font-size:15px;font-weight:800;color:#fff;margin-bottom:5px;}
 .lp-feat-body{font-size:13px;color:rgba(255,255,255,.45);line-height:1.65;}
 
+/* ── 报告 Mockup 卡 ──────────────────────────────── */
+@keyframes lp-mockup-in{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+.lp-mockup{max-width:500px;margin:28px auto 0;
+  background:#0E0F1A;border:1px solid rgba(255,255,255,.1);border-radius:14px;
+  overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55),
+  0 0 60px rgba(99,102,241,.07);animation:lp-mockup-in .9s .35s ease both;}
+.lp-mk-bar{background:#090A14;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex;align-items:center;gap:6px;}
+.lp-mk-bar-dot{width:10px;height:10px;border-radius:50%;}
+.lp-mk-bar-title{flex:1;text-align:center;font-size:10px;color:rgba(255,255,255,.25);letter-spacing:.05em;}
+.lp-mk-export{font-size:9px;color:rgba(99,102,241,.7);border:1px solid rgba(99,102,241,.3);
+  padding:2px 8px;border-radius:4px;white-space:nowrap;}
+.lp-mk-body{padding:14px 16px 16px;}
+.lp-mk-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+.lp-mk-cell{background:#13142A;border-radius:8px;padding:10px 12px;}
+.lp-mk-label{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:.08em;margin-bottom:4px;}
+.lp-mk-val{font-size:13px;font-weight:700;color:#fff;}
+.lp-mk-sub{font-size:10px;color:rgba(255,255,255,.35);margin-top:2px;}
+.lp-mk-scripts{background:#13142A;border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+.lp-mk-sr{display:flex;gap:8px;align-items:flex-start;padding:5px 0;
+  border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;
+  color:rgba(255,255,255,.52);line-height:1.5;}
+.lp-mk-sr:last-child{border-bottom:none;}
+.lp-mk-num{flex-shrink:0;width:16px;height:16px;border-radius:50%;
+  background:rgba(99,102,241,.2);color:#A5B4FC;font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;}
+.lp-mk-ab{background:linear-gradient(90deg,rgba(99,102,241,.08),rgba(168,85,247,.05));
+  border:1px solid rgba(99,102,241,.15);border-radius:8px;padding:10px 12px;}
+.lp-mk-ab-label{font-size:9px;color:#A5B4FC;letter-spacing:.08em;margin-bottom:6px;}
+.lp-mk-ab-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.lp-mk-ab-item{font-size:10px;color:rgba(255,255,255,.48);line-height:1.55;}
+/* ── 冷启动信任 badges ──────────────────────────── */
+.lp-trust-row{display:flex;align-items:center;justify-content:center;gap:8px;
+  flex-wrap:wrap;margin-bottom:16px;}
+.lp-team-badge{display:inline-flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);
+  color:rgba(255,255,255,.45);font-size:11px;padding:4px 12px;border-radius:20px;}
+.lp-beta-badge{display:inline-flex;align-items:center;gap:5px;
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.22);
+  color:#FCA5A5;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;}
+.lp-beta-dot{width:7px;height:7px;border-radius:50%;background:#EF4444;
+  animation:lp-pulse 1.4s ease-in-out infinite;}
+/* ── 早鸟特权模块 ───────────────────────────────── */
+.lp-earlybird{background:#0D0E1C;border:1px solid rgba(99,102,241,.2);
+  border-radius:14px;padding:20px 24px;}
+.lp-eb-header{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:12px;margin-bottom:12px;}
+.lp-eb-title{font-size:14px;font-weight:800;color:#fff;line-height:1.4;}
+.lp-eb-count{font-size:12px;color:rgba(255,255,255,.4);white-space:nowrap;margin-top:2px;}
+.lp-eb-count em{color:#A5B4FC;font-style:normal;font-weight:700;}
+.lp-eb-bar-wrap{height:5px;background:rgba(255,255,255,.06);border-radius:3px;
+  margin-bottom:14px;overflow:hidden;}
+.lp-eb-bar{height:100%;background:linear-gradient(90deg,#6366F1,#A855F7);
+  border-radius:3px;width:17%;}
+.lp-eb-perks{display:flex;flex-direction:column;gap:7px;}
+.lp-eb-perk{display:flex;align-items:center;gap:9px;font-size:13px;color:rgba(255,255,255,.6);}
+.lp-eb-ico{width:24px;height:24px;border-radius:6px;flex-shrink:0;
+  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
+  display:flex;align-items:center;justify-content:center;font-size:12px;}
+/* ── 案例入口 ───────────────────────────────────── */
+.lp-case-link{display:inline-flex;align-items:center;gap:6px;color:#A5B4FC;
+  font-size:13px;text-decoration:none;
+  border-bottom:1px solid rgba(165,180,252,.22);padding-bottom:1px;
+  transition:color .15s,border-color .15s;}
+.lp-case-link:hover{color:#fff;border-color:rgba(255,255,255,.35);}
+/* ── 登录文字链接按钮 ─────────────────────────── */
+.lp-login-link-btn .stButton>button{
+  background:transparent!important;border:none!important;
+  color:rgba(255,255,255,.36)!important;font-size:12px!important;
+  font-weight:400!important;height:auto!important;padding:3px 4px!important;
+  box-shadow:none!important;min-height:0!important;}
+.lp-login-link-btn .stButton>button:hover{color:rgba(255,255,255,.65)!important;}
+/* ── CTA 辅助 ─────────────────────────────────── */
+.lp-cta-hint{text-align:center;font-size:12px;color:rgba(255,255,255,.25);
+  margin-top:9px;letter-spacing:.01em;}
+
 /* 隐藏 Streamlit 按钮默认装饰 */
 .lp-btn-row .stButton>button{
   border-radius:12px!important;font-size:15px!important;
@@ -1478,6 +1559,11 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
         <circle cx="30" cy="5" r="2.8" fill="rgba(255,255,255,0.6)"/>
       </svg>
     </div>
+    <!-- 冷启动信任行 -->
+    <div class="lp-trust-row">
+      <div class="lp-team-badge">🛠 由前[行业]电商团队打造 &nbsp;·&nbsp; 持续迭代中</div>
+      <div class="lp-beta-badge"><div class="lp-beta-dot"></div>BETA · 本周已迭代 3 次</div>
+    </div>
     <div class="lp-badge">
       <div class="lp-badge-dot"></div>
       多模态 &nbsp;·&nbsp; RAG 知识库 &nbsp;·&nbsp; 4 个 AI 智能体协同
@@ -1487,25 +1573,103 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       不是让 AI 帮你<strong>写内容</strong>——<br>
       而是真正看懂竞品，告诉你爆款密码在哪，<strong>你的版本怎么改</strong>。
     </div>
+
+    <!-- 报告预览 Mockup -->
+    <div class="lp-mockup">
+      <div class="lp-mk-bar">
+        <div class="lp-mk-bar-dot" style="background:#FF5F57;"></div>
+        <div class="lp-mk-bar-dot" style="background:#FEBC2E;"></div>
+        <div class="lp-mk-bar-dot" style="background:#28C840;"></div>
+        <div class="lp-mk-bar-title">VIRA 竞品分析报告 &nbsp;·&nbsp; [竞品视频名称].mp4</div>
+        <div class="lp-mk-export">导出 PDF</div>
+      </div>
+      <div class="lp-mk-body">
+        <div class="lp-mk-row">
+          <div class="lp-mk-cell">
+            <div class="lp-mk-label">VISUAL SCORE</div>
+            <div class="lp-mk-val">87 <span style="font-size:11px;font-weight:400;color:rgba(255,255,255,.4);">/ 100</span></div>
+            <div class="lp-mk-sub">高于同品类均值 +21%</div>
+          </div>
+          <div class="lp-mk-cell">
+            <div class="lp-mk-label">HOOK 类型</div>
+            <div class="lp-mk-val" style="color:#A5B4FC;">悬念开场</div>
+            <div class="lp-mk-sub">前 3 秒留存率 ↑ 强</div>
+          </div>
+          <div class="lp-mk-cell">
+            <div class="lp-mk-label">合规状态</div>
+            <div class="lp-mk-val" style="color:#34D399;">✓ 低风险</div>
+            <div class="lp-mk-sub">合规分 91 / 100</div>
+          </div>
+          <div class="lp-mk-cell">
+            <div class="lp-mk-label">综合评级</div>
+            <div class="lp-mk-val">
+              <span style="background:linear-gradient(135deg,#6366F1,#A855F7);
+                -webkit-background-clip:text;-webkit-text-fill-color:transparent;">A 级</span>
+            </div>
+            <div class="lp-mk-sub">完播率预估 +24%</div>
+          </div>
+        </div>
+        <div class="lp-mk-scripts">
+          <div class="lp-mk-label" style="margin-bottom:8px;">SCRIPT SUGGESTIONS · 3 套可用脚本</div>
+          <div class="lp-mk-sr"><div class="lp-mk-num">1</div>「[开场疑问句]——你以为…其实…」悬念反转型，适合 15s 短视频</div>
+          <div class="lp-mk-sr"><div class="lp-mk-num">2</div>「[数字+结论]：3 个让完播率提升 30% 的拍摄技巧」数据驱动型</div>
+          <div class="lp-mk-sr"><div class="lp-mk-num">3</div>「[痛点共鸣]→ 解决方案 → 限时 CTA」转化漏斗型，适合带货场景</div>
+        </div>
+        <div class="lp-mk-ab">
+          <div class="lp-mk-ab-label">A/B TEST 建议</div>
+          <div class="lp-mk-ab-grid">
+            <div class="lp-mk-ab-item">🅐 保留当前悬念开场<br>预计完播 68%</div>
+            <div class="lp-mk-ab-item">🅑 改为数字结论式<br>预计完播 <strong style="color:#A5B4FC;">82%</strong> ↑</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="lp-hero-cta-ph"></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-    # Hero CTA 按钮（真正可点击的 Streamlit 按钮）
+    # Hero CTA 按钮
     st.markdown('<div class="lp-btn-row">', unsafe_allow_html=True)
-    _, _hc, _ = st.columns([1, 1.6, 1])
+    _, _hc, _ = st.columns([1, 1.4, 1])
     with _hc:
-        _ca, _cb = st.columns(2)
-        with _ca:
-            if st.button("🎬  上传视频，免费分析", type="primary",
-                         use_container_width=True, key="land_cta_main"):
-                st.session_state.landing_passed = True
-                st.session_state.auth_mode = "signup"
-                st.rerun()
-        with _cb:
-            if st.button("已有账户  登录 →",
-                         use_container_width=True, key="land_cta_login"):
+        if st.button("✦  免费开始 · 赠 5 份报告", type="primary",
+                     use_container_width=True, key="land_cta_main"):
+            st.session_state.landing_passed = True
+            st.session_state.auth_mode = "signup"
+            st.rerun()
+        st.markdown(
+            '<div class="lp-cta-hint">注册即赠 5 份完整竞品分析报告，无需信用卡</div>',
+            unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 早鸟特权模块
+    _, _eb_col, _ = st.columns([1, 2, 1])
+    with _eb_col:
+        st.markdown("""
+<div class="lp-earlybird">
+  <div class="lp-eb-header">
+    <div class="lp-eb-title">🎁 前 100 名内测用户专属权益</div>
+    <div class="lp-eb-count">已有 <em>[17]</em> / 100 名</div>
+  </div>
+  <div class="lp-eb-bar-wrap"><div class="lp-eb-bar"></div></div>
+  <div class="lp-eb-perks">
+    <div class="lp-eb-perk"><div class="lp-eb-ico">💎</div>终身 5 折订阅价，永久锁定</div>
+    <div class="lp-eb-perk"><div class="lp-eb-ico">⚡</div>新功能优先体验权，比正式版早 2 周</div>
+    <div class="lp-eb-perk"><div class="lp-eb-ico">💬</div>直接对话产品团队，需求直通车</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # 登录文字链接
+    st.markdown('<div class="lp-login-link-btn">', unsafe_allow_html=True)
+    _, _lc, _ = st.columns([1, 1.4, 1])
+    with _lc:
+        _, _ll, _ = st.columns([1, 2, 1])
+        with _ll:
+            if st.button("已有账户？登录 →", key="land_cta_login",
+                         use_container_width=True):
                 st.session_state.landing_passed = True
                 st.session_state.auth_mode = "login"
                 st.rerun()
@@ -1534,31 +1698,31 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
 <div class="lp-wrap">
   <div class="lp-feats">
     <div class="lp-feat-card">
+      <div class="lp-feat-ico">🖼️</div>
+      <div>
+        <div class="lp-feat-title">单图竞品分析</div>
+        <div class="lp-feat-body">上传一张截图，25 秒获得 Hook 评分 + 合规扫描 + 改版脚本，最常用场景。</div>
+      </div>
+    </div>
+    <div class="lp-feat-card">
       <div class="lp-feat-ico">⚡</div>
       <div>
-        <div class="lp-feat-title">省 60 倍时间</div>
-        <div class="lp-feat-body">25 秒出完整竞品报告，告别半天人工反复刷视频的低效循环。</div>
+        <div class="lp-feat-title">批量并发分析</div>
+        <div class="lp-feat-body">一次上传多张截图，四 Agent 并发处理，每帧独立出完整报告，效率 60×。</div>
       </div>
     </div>
     <div class="lp-feat-card">
-      <div class="lp-feat-ico">💰</div>
+      <div class="lp-feat-ico">🎬</div>
       <div>
-        <div class="lp-feat-title">降低竞品分析成本</div>
-        <div class="lp-feat-body">每份报告节省 4+ 小时人力，单月 ROI 超过订阅费用 10 倍。</div>
+        <div class="lp-feat-title">视频口播提取</div>
+        <div class="lp-feat-body">上传视频，Whisper AI 自动转录口播文案，一键写入品牌知识库复用。</div>
       </div>
     </div>
     <div class="lp-feat-card">
-      <div class="lp-feat-ico">🎯</div>
+      <div class="lp-feat-ico">📋</div>
       <div>
-        <div class="lp-feat-title">改版有数据背书</div>
-        <div class="lp-feat-body">量化预测完播率提升幅度，每条改版建议都有百分比数字支撑。</div>
-      </div>
-    </div>
-    <div class="lp-feat-card">
-      <div class="lp-feat-ico">🛡️</div>
-      <div>
-        <div class="lp-feat-title">发布零风险</div>
-        <div class="lp-feat-body">合规词库实时扫描，极限词 / 违规声称自动标注，避免投放白费。</div>
+        <div class="lp-feat-title">模板库复用</div>
+        <div class="lp-feat-body">保存品牌知识库配置，下次一键套用，团队共享分析工作流。</div>
       </div>
     </div>
   </div>
@@ -1701,12 +1865,12 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
   <div class="lp-sec-sub">每个 Agent 都有专属的知识库和分析视角，结合在一起才是完整的判断。</div>
   <div class="lp-ag3">
     <div class="lp-card lp-ag-card">
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#818CF8;"></div><span style="color:#818CF8;">AGENT A</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#818CF8;"></div><span style="color:#818CF8;">AGENT A · 视觉拆解师</span></div>
       <div class="lp-ag-ico">👁️</div>
-      <div class="lp-ag-name">视觉提取师</div>
-      <div class="lp-ag-role">逐帧分析画面，比人眼更精准</div>
-      <div class="lp-ag-desc">分析前 3 秒 Hook 类型、画面色彩情绪、文字布局质量、
-切换节奏——和爆款规律知识库对比，给出 Hook 评分。</div>
+      <div class="lp-ag-name" style="color:#A5B4FC;">获得 Hook 类型评分<br>+ 情绪基调分析</div>
+      <div class="lp-ag-role">逐帧分析，比人眼更精准</div>
+      <div class="lp-ag-desc">你将看到：前 3 秒 Hook 属于哪种类型、当前情绪基调分值、
+与爆款视频的差距在哪里。</div>
       <div class="lp-ag-chips">
         <span class="lp-ag-chip">Hook 类型识别</span>
         <span class="lp-ag-chip">色彩情绪分析</span>
@@ -1714,41 +1878,46 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       </div>
     </div>
     <div class="lp-card lp-ag-card">
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#F87171;"></div><span style="color:#F87171;">AGENT B</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#F472B6;"></div><span style="color:#F472B6;">AGENT B · 转化精算师</span></div>
+      <div class="lp-ag-ico">✍️</div>
+      <div class="lp-ag-name" style="color:#F9A8D4;">获得 3 套可直接使用<br>的商业脚本</div>
+      <div class="lp-ag-role">结合品牌知识库定制</div>
+      <div class="lp-ag-desc">你将收到：3 套针对你品类定制的 Hook + 脚本 + CTA 完整文案，
+可直接复制使用。</div>
+      <div class="lp-ag-chips">
+        <span class="lp-ag-chip">脚本生成</span>
+        <span class="lp-ag-chip">Hook 优化</span>
+        <span class="lp-ag-chip">RAG 知识库</span>
+      </div>
+    </div>
+    <div class="lp-card lp-ag-card">
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#F87171;"></div><span style="color:#F87171;">AGENT C · 合规排雷兵</span></div>
       <div class="lp-ag-ico">🛡️</div>
-      <div class="lp-ag-name">合规审查官</div>
-      <div class="lp-ag-role">发布前的最后一道防线</div>
-      <div class="lp-ag-desc">比对平台合规规则库，精准识别极限用语、医疗声称、
-金融承诺等高风险内容，给出风险级别和修改建议。</div>
+      <div class="lp-ag-name" style="color:#FCA5A5;">通过抖音 / TikTok<br>违规风险扫描</div>
+      <div class="lp-ag-role">发布前最后一道防线</div>
+      <div class="lp-ag-desc">你将知道：哪些词触发平台风控、风险级别评分，以及
+具体替换建议——在投放前修改，不在封号后后悔。</div>
       <div class="lp-ag-chips">
         <span class="lp-ag-chip">违规词检测</span>
         <span class="lp-ag-chip">风险分级</span>
         <span class="lp-ag-chip">修改建议</span>
       </div>
     </div>
-    <div class="lp-card lp-ag-card">
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#34D399;"></div><span style="color:#34D399;">AGENT C</span></div>
-      <div class="lp-ag-ico">📈</div>
-      <div class="lp-ag-name">增长预测官</div>
-      <div class="lp-ag-role">用数据说话，不靠直觉</div>
-      <div class="lp-ag-desc">基于情绪强度、实用价值、身份认同、稀缺感、社交货币
-五维病毒传播因子模型，预测完播率和传播潜力。</div>
-      <div class="lp-ag-chips">
-        <span class="lp-ag-chip">完播率预测</span>
-        <span class="lp-ag-chip">受众画像</span>
-        <span class="lp-ag-chip">发布时机</span>
-      </div>
-    </div>
   </div>
   <div class="lp-card lp-ag-d">
     <div>
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#C084FC;"></div><span style="color:#C084FC;">AGENT D &nbsp;·&nbsp; 综合汇总</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#C084FC;"></div><span style="color:#C084FC;">AGENT D &nbsp;·&nbsp; 策略执行官</span></div>
       <div class="lp-ag-ico">🔮</div>
-      <div class="lp-ag-name">重构总监</div>
+      <div class="lp-ag-name" style="color:#E9D5FF;">获得 A/B 发布方案<br>+ 最终决策建议</div>
       <div class="lp-ag-role" style="margin-bottom:10px;">读取 A+B+C 全部结果，输出最终判决</div>
       <div class="lp-ag-desc" style="font-size:13px;color:rgba(255,255,255,.52);line-height:1.65;">
-        综合三个专家 Agent 的分析，给出 S/A/B/C/D 综合评级，以及前 3 秒改法、
-        视觉升级点、文案优化方向、发布策略的完整改版方案。</div>
+        综合三路 Agent 分析，给出 S/A/B/C/D 综合评级 + 两套 A/B 发布方案对比，
+        以及「发还是不发」「改什么」「什么时候发」的完整决策建议。</div>
+      <div style="margin-top:14px;">
+        <a class="lp-case-link" href="[案例页URL]" target="_blank">
+          📄 查看真实分析案例 →
+        </a>
+      </div>
     </div>
     <div class="lp-ag-d-output">
       <div class="lp-ag-d-example">OUTPUT EXAMPLE</div>
@@ -1843,7 +2012,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     with _fc:
         _fa, _fb = st.columns(2)
         with _fa:
-            if st.button("🚀  免费开始分析", type="primary",
+            if st.button("✦  免费开始 · 赠 5 份报告", type="primary",
                          use_container_width=True, key="final_cta_main"):
                 st.session_state.landing_passed = True
                 st.session_state.auth_mode = "signup"
