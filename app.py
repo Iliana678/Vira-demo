@@ -1161,134 +1161,658 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
     )
 
 
-# ── 产品落地页 ────────────────────────────────────────────────────────────────
+# ── 产品落地页（完整营销页）─────────────────────────────────────────────────
 def _render_landing_page() -> None:
+    # ── 全局 CSS ─────────────────────────────────────────────────────────────
+    st.markdown("""<style>
+/* 隐藏 Streamlit 框架 chrome */
+[data-testid="stSidebar"],[data-testid="stSidebarNav"],
+[data-testid="stHeader"],#MainMenu,footer,.stDeployButton{display:none!important;}
+[data-testid="stMainBlockContainer"]{max-width:100%!important;padding:0!important;}
+[data-testid="stMain"]{padding:0!important;}
+.block-container{padding:0!important;max-width:100%!important;}
+.stApp,[data-testid="stAppViewContainer"],body{
+  background:#08090F!important;background-image:none!important;}
+
+/* 动画 */
+@keyframes lp-fade-up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+@keyframes lp-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes lp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.75)}}
+@keyframes lp-glow{0%,100%{box-shadow:0 0 20px rgba(99,102,241,.4)}
+                   50%{box-shadow:0 0 44px rgba(168,85,247,.65)}}
+@keyframes lp-bar{from{width:0%}to{width:72%}}
+@keyframes lp-ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* 导航栏 */
+.lp-nav{position:fixed;top:0;left:0;right:0;z-index:9999;
+  height:58px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 48px;
+  background:rgba(8,9,15,.88);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(255,255,255,.06);}
+.lp-logo{display:flex;align-items:center;gap:9px;text-decoration:none;}
+.lp-logo-dot{width:10px;height:10px;border-radius:50%;
+  background:linear-gradient(135deg,#6366F1,#A855F7);
+  animation:lp-pulse 2.2s ease-in-out infinite;flex-shrink:0;}
+.lp-logo-text{font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;
+  font-weight:900;color:#fff;letter-spacing:-.01em;}
+.lp-nav-links{display:flex;gap:28px;}
+.lp-nav-link{font-size:13px;color:rgba(255,255,255,.55);text-decoration:none;
+  transition:color .15s;cursor:pointer;}
+.lp-nav-link:hover{color:#fff;}
+.lp-nav-cta{background:linear-gradient(135deg,#6366F1,#A855F7);color:#fff!important;
+  font-size:13px;font-weight:700;padding:8px 20px;border-radius:8px;
+  text-decoration:none;cursor:pointer;
+  box-shadow:0 4px 18px rgba(99,102,241,.35);transition:transform .12s;}
+.lp-nav-cta:hover{transform:translateY(-1px);}
+
+/* 主容器 */
+.lp-wrap{max-width:1100px;margin:0 auto;padding:0 48px;}
+.lp-spacer-nav{height:58px;}
+
+/* Hero */
+.lp-hero{padding:96px 0 64px;text-align:center;
+  animation:lp-fade-up .75s ease both;}
+.lp-badge{display:inline-flex;align-items:center;gap:7px;
+  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.28);
+  color:rgba(255,255,255,.65);font-size:11.5px;font-weight:600;
+  padding:5px 14px;border-radius:20px;margin-bottom:26px;letter-spacing:.06em;}
+.lp-badge-dot{width:6px;height:6px;border-radius:50%;
+  background:#6366F1;animation:lp-pulse 1.8s ease-in-out infinite;}
+.lp-h1{font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:clamp(34px,5.5vw,66px);font-weight:900;color:#fff;
+  line-height:1.08;letter-spacing:-.045em;margin-bottom:18px;}
+.lp-h1 .grad{background:linear-gradient(90deg,#818CF8,#C084FC,#F472B6);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.lp-sub{font-size:clamp(15px,1.8vw,18px);color:rgba(255,255,255,.48);
+  line-height:1.8;max-width:580px;margin:0 auto 18px;}
+.lp-sub strong{color:rgba(255,255,255,.82);}
+.lp-sub-em{font-size:14px;color:rgba(255,255,255,.32);
+  margin-bottom:38px;max-width:480px;margin-left:auto;margin-right:auto;}
+
+/* Hero CTA 区域占位 */
+.lp-hero-cta-ph{height:56px;}
+
+/* Stats */
+.lp-stats{display:flex;justify-content:center;gap:48px;flex-wrap:wrap;
+  margin-top:52px;padding-top:28px;
+  border-top:1px solid rgba(255,255,255,.06);}
+.lp-stat{}
+.lp-stat-num{font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:clamp(22px,2.8vw,32px);font-weight:900;color:#fff;
+  letter-spacing:-.04em;}
+.lp-stat-num em{font-style:normal;
+  background:linear-gradient(90deg,#818CF8,#C084FC);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.lp-stat-label{font-size:12px;color:rgba(255,255,255,.38);
+  margin-top:4px;text-align:center;}
+
+/* Demo 窗口 */
+.lp-demo-wrap{padding:0 0 88px;animation:lp-fade-up .85s .15s ease both;}
+.lp-demo-win{background:#0E0F1A;border:1px solid rgba(255,255,255,.09);
+  border-radius:16px;overflow:hidden;
+  box-shadow:0 48px 128px rgba(0,0,0,.7),
+             0 0 80px rgba(99,102,241,.07),
+             inset 0 1px 0 rgba(255,255,255,.05);}
+.lp-demo-bar{display:flex;align-items:center;gap:7px;padding:11px 16px;
+  background:#090A14;border-bottom:1px solid rgba(255,255,255,.06);}
+.lp-demo-dot{width:12px;height:12px;border-radius:50%;}
+.lp-demo-title{flex:1;text-align:center;font-size:11px;
+  color:rgba(255,255,255,.28);letter-spacing:.04em;}
+.lp-demo-body{padding:20px 20px 24px;display:grid;gap:14px;}
+.lp-demo-frames{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.lp-frame{background:#13142A;border-radius:8px;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:20px 8px 12px;gap:8px;
+  border:1px solid rgba(255,255,255,.05);}
+.lp-frame-emoji{font-size:22px;}
+.lp-frame-tag{font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.04em;}
+.lp-demo-agents{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.lp-da{background:#13142A;border-radius:10px;padding:12px 14px;border-left:3px solid;}
+.lp-da-tag{font-size:9px;font-weight:700;letter-spacing:.1em;margin-bottom:6px;}
+.lp-da-val{font-size:13px;font-weight:800;color:#fff;}
+.lp-da-sub{font-size:11px;color:rgba(255,255,255,.38);margin-top:2px;}
+.lp-demo-summary{display:flex;align-items:center;gap:14px;
+  background:linear-gradient(90deg,rgba(99,102,241,.12),rgba(168,85,247,.08));
+  border:1px solid rgba(99,102,241,.22);border-radius:10px;padding:14px 18px;}
+.lp-ds-grade{width:42px;height:42px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,#6366F1,#A855F7);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:900;color:#fff;}
+.lp-ds-text{font-size:13px;color:rgba(255,255,255,.65);line-height:1.6;}
+.lp-ds-score{font-size:14px;font-weight:800;color:#fff;margin-bottom:2px;}
+
+/* ── 通用 section ── */
+.lp-section{padding:80px 0;}
+.lp-sec-tag{font-size:11px;font-weight:700;color:#6366F1;
+  letter-spacing:.14em;margin-bottom:10px;}
+.lp-sec-h2{font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:clamp(24px,3.6vw,44px);font-weight:900;color:#fff;
+  line-height:1.12;letter-spacing:-.035em;margin-bottom:10px;}
+.lp-sec-sub{font-size:15px;color:rgba(255,255,255,.42);
+  line-height:1.75;max-width:600px;margin-bottom:44px;}
+.lp-card{background:#0E0F1A;border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;transition:border-color .2s,transform .2s;}
+.lp-card:hover{border-color:rgba(99,102,241,.3);transform:translateY(-3px);}
+
+/* Before/After */
+.lp-ba-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.lp-ba-label{font-size:11px;font-weight:700;letter-spacing:.1em;
+  display:flex;align-items:center;gap:8px;margin-bottom:18px;}
+.lp-ba-item{display:flex;align-items:flex-start;gap:10px;
+  padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05);
+  font-size:13px;color:rgba(255,255,255,.65);line-height:1.55;}
+.lp-ba-item:last-child{border-bottom:none;}
+.lp-ba-ico{flex-shrink:0;font-size:14px;margin-top:1px;}
+
+/* 步骤 */
+.lp-steps{display:flex;flex-direction:column;gap:14px;}
+.lp-step{display:flex;gap:22px;align-items:flex-start;padding:26px 28px;}
+.lp-step-num{font-family:'Plus Jakarta Sans',sans-serif;font-size:52px;
+  font-weight:900;color:rgba(255,255,255,.05);line-height:1;
+  flex-shrink:0;min-width:56px;}
+.lp-step-ico{font-size:30px;flex-shrink:0;}
+.lp-step-body{}
+.lp-step-title{font-size:18px;font-weight:800;color:#fff;margin-bottom:6px;}
+.lp-step-desc{font-size:13.5px;color:rgba(255,255,255,.45);line-height:1.7;}
+.lp-step-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;}
+.lp-chip{font-size:11px;background:rgba(99,102,241,.1);color:#A5B4FC;
+  border:1px solid rgba(99,102,241,.2);padding:3px 11px;border-radius:20px;}
+
+/* Agent 卡片 */
+.lp-ag3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;}
+.lp-ag-card{padding:22px 22px 18px;}
+.lp-ag-tag{font-size:10px;font-weight:700;letter-spacing:.1em;
+  display:flex;align-items:center;gap:6px;margin-bottom:14px;}
+.lp-ag-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.lp-ag-ico{font-size:30px;margin-bottom:10px;}
+.lp-ag-name{font-size:17px;font-weight:800;color:#fff;margin-bottom:3px;}
+.lp-ag-role{font-size:12px;color:rgba(255,255,255,.35);margin-bottom:10px;}
+.lp-ag-desc{font-size:13px;color:rgba(255,255,255,.52);line-height:1.65;}
+.lp-ag-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+.lp-ag-chip{font-size:11px;background:rgba(255,255,255,.04);
+  color:rgba(255,255,255,.38);border:1px solid rgba(255,255,255,.08);
+  padding:3px 10px;border-radius:20px;}
+.lp-ag-d{display:grid;grid-template-columns:1fr 1fr;gap:24px;
+  padding:24px 28px;align-items:start;}
+.lp-ag-d-output{background:#090A14;border:1px solid rgba(99,102,241,.15);
+  border-radius:10px;padding:18px;}
+.lp-ag-d-example{font-size:11px;font-weight:700;color:#6366F1;
+  letter-spacing:.1em;margin-bottom:10px;}
+.lp-ag-d-score{font-size:18px;font-weight:900;color:#fff;margin-bottom:4px;}
+.lp-ag-d-grade{display:inline-block;background:linear-gradient(135deg,#6366F1,#A855F7);
+  color:#fff;font-size:11px;font-weight:700;padding:2px 10px;
+  border-radius:6px;margin-bottom:8px;}
+.lp-ag-d-desc{font-size:12px;color:rgba(255,255,255,.45);line-height:1.65;}
+
+/* 用户评价 */
+.lp-reviews{display:flex;flex-direction:column;gap:14px;}
+.lp-review{padding:22px 26px;}
+.lp-stars{color:#F59E0B;font-size:14px;margin-bottom:10px;}
+.lp-rv-text{font-size:14px;color:rgba(255,255,255,.7);
+  line-height:1.8;margin-bottom:14px;}
+.lp-rv-by{display:flex;align-items:center;gap:11px;}
+.lp-rv-avatar{width:36px;height:36px;border-radius:9px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:#fff;}
+.lp-rv-name{font-size:13px;font-weight:700;color:#fff;}
+.lp-rv-role{font-size:11px;color:rgba(255,255,255,.32);}
+
+/* FAQ */
+.lp-faqs{}
+details.lp-faq{border-bottom:1px solid rgba(255,255,255,.07);padding:18px 0;}
+details.lp-faq summary{font-size:15px;font-weight:600;color:#fff;
+  list-style:none;display:flex;justify-content:space-between;
+  align-items:center;cursor:pointer;}
+details.lp-faq summary::-webkit-details-marker{display:none;}
+details.lp-faq summary::after{content:"+";font-size:20px;
+  color:rgba(255,255,255,.28);transition:transform .2s;}
+details.lp-faq[open] summary::after{content:"×";}
+details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
+  line-height:1.8;margin-top:10px;padding-right:28px;}
+
+/* 最终 CTA */
+.lp-final{background:#0E0F1A;border:1px solid rgba(255,255,255,.07);
+  border-radius:22px;padding:72px 48px 60px;text-align:center;
+  margin:80px 0 0;position:relative;overflow:hidden;}
+.lp-final::before{content:'';position:absolute;top:-100px;left:50%;
+  transform:translateX(-50%);width:500px;height:500px;
+  background:radial-gradient(circle,rgba(99,102,241,.18) 0%,transparent 65%);
+  pointer-events:none;}
+.lp-final-h2{font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:clamp(24px,3.8vw,42px);font-weight:900;color:#fff;
+  line-height:1.12;letter-spacing:-.04em;margin-bottom:12px;}
+.lp-final-sub{font-size:15px;color:rgba(255,255,255,.42);margin-bottom:36px;}
+
+/* CTA 占位高度 */
+.lp-cta-ph{height:52px;}
+
+/* 底部 ticker */
+.lp-ticker-wrap{overflow:hidden;border-top:1px solid rgba(255,255,255,.06);
+  border-bottom:1px solid rgba(255,255,255,.06);
+  padding:12px 0;margin:0 0 0;background:#0A0B15;}
+.lp-ticker{display:flex;gap:48px;width:max-content;
+  animation:lp-ticker 20s linear infinite;}
+.lp-ticker-item{font-size:12px;color:rgba(255,255,255,.25);
+  white-space:nowrap;letter-spacing:.06em;display:flex;align-items:center;gap:10px;}
+.lp-ticker-sep{color:rgba(99,102,241,.4);}
+
+/* 页脚 */
+.lp-footer{padding:28px 48px;display:flex;justify-content:space-between;
+  align-items:center;max-width:1100px;margin:0 auto;}
+.lp-footer-brand{display:flex;align-items:center;gap:8px;}
+.lp-footer-brand-dot{width:8px;height:8px;border-radius:50%;
+  background:linear-gradient(135deg,#6366F1,#A855F7);}
+.lp-footer-brand-name{font-size:14px;font-weight:800;color:#fff;}
+.lp-footer-copy{font-size:12px;color:rgba(255,255,255,.22);}
+
+/* 隐藏 Streamlit 按钮默认装饰 */
+.lp-btn-row .stButton>button{
+  border-radius:12px!important;font-size:15px!important;
+  font-weight:700!important;height:52px!important;
+  transition:transform .12s,box-shadow .12s!important;}
+.lp-btn-row .stButton>button:hover{transform:translateY(-2px)!important;}
+</style>""", unsafe_allow_html=True)
+
+    # ── 导航栏 ────────────────────────────────────────────────────────────────
     st.markdown("""
-<style>
-[data-testid="stSidebar"],[data-testid="stSidebarNav"],.vira-nav{display:none!important;}
-[data-testid="stMainBlockContainer"]{max-width:860px!important;padding:0 24px 64px!important;margin:0 auto!important;}
+<nav class="lp-nav">
+  <a class="lp-logo" href="#">
+    <div class="lp-logo-dot"></div>
+    <span class="lp-logo-text">VIRA</span>
+  </a>
+  <div class="lp-nav-links">
+    <a class="lp-nav-link" href="#how">工作原理</a>
+    <a class="lp-nav-link" href="#agents">AI 智能体</a>
+    <a class="lp-nav-link" href="#pricing">定价</a>
+  </div>
+  <span class="lp-nav-cta" id="nav-cta-btn">免费试用 →</span>
+</nav>
+<div class="lp-spacer-nav"></div>
+""", unsafe_allow_html=True)
 
-/* 极光背景（复用认证页） */
-@keyframes vira-land-aurora{0%,100%{background-position:0% 50%;}50%{background-position:100% 50%;}}
-@keyframes vira-land-orb1{0%,100%{transform:translate(0,0) scale(1);}40%{transform:translate(50px,-40px) scale(1.06);}70%{transform:translate(-30px,50px) scale(.95);}}
-@keyframes vira-land-orb2{0%,100%{transform:translate(0,0);}35%{transform:translate(-60px,35px);}70%{transform:translate(40px,-55px);}}
-@keyframes vira-land-orb3{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(35px,60px) scale(1.08);}}
-@keyframes vira-hero-in{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:none;}}
-@keyframes vira-logo-pulse{0%,100%{box-shadow:0 8px 40px rgba(99,102,241,.5);}50%{box-shadow:0 12px 70px rgba(168,85,247,.75),0 0 40px 12px rgba(168,85,247,.18);}}
-@keyframes vira-badge-glow{0%,100%{opacity:.7;}50%{opacity:1;}}
-
-.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],body{
-    background:#EEF0FF!important;background-image:none!important;animation:none!important;}
-
-.vl-orbs{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;}
-.vl-orb{position:absolute;border-radius:50%;filter:blur(85px);}
-.vl-o1{width:700px;height:700px;background:radial-gradient(circle,rgba(196,181,253,.8) 0%,rgba(129,140,248,.35) 50%,transparent 75%);top:-220px;left:-200px;animation:vira-land-orb1 14s ease-in-out infinite;}
-.vl-o2{width:580px;height:580px;background:radial-gradient(circle,rgba(147,197,253,.75) 0%,rgba(96,165,250,.3) 50%,transparent 75%);bottom:-160px;right:-160px;animation:vira-land-orb2 11s ease-in-out infinite;}
-.vl-o3{width:420px;height:420px;background:radial-gradient(circle,rgba(249,168,212,.7) 0%,rgba(192,132,252,.3) 50%,transparent 75%);top:40%;left:58%;animation:vira-land-orb3 9s ease-in-out infinite;}
-
-.vl-wrap{position:relative;z-index:1;}
-.vl-hero{text-align:center;padding:64px 0 48px;animation:vira-hero-in .7s ease both;}
-.vl-logo{width:72px;height:72px;border-radius:20px;margin:0 auto 22px;background:linear-gradient(135deg,#6366F1 0%,#A855F7 100%);display:flex;align-items:center;justify-content:center;font-size:34px;animation:vira-logo-pulse 3s ease-in-out infinite;}
-.vl-badge{display:inline-block;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);color:#6366F1;font-size:11px;font-weight:700;letter-spacing:.1em;padding:4px 14px;border-radius:20px;margin-bottom:16px;animation:vira-badge-glow 2.5s ease-in-out infinite;}
-.vl-h1{font-family:'Plus Jakarta Sans',sans-serif;font-size:clamp(28px,5vw,46px);font-weight:800;color:#1E1B4B;line-height:1.18;letter-spacing:-.02em;margin-bottom:16px;}
-.vl-h1 span{background:linear-gradient(90deg,#6366F1,#A855F7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.vl-sub{font-size:clamp(14px,2vw,17px);color:#6B7280;line-height:1.7;max-width:560px;margin:0 auto 36px;}
-.vl-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:56px;}
-.vl-btn-pri{display:inline-block;background:linear-gradient(135deg,#6366F1,#A855F7);color:#fff!important;font-size:15px;font-weight:700;padding:14px 36px;border-radius:12px;text-decoration:none;cursor:pointer;box-shadow:0 6px 24px rgba(99,102,241,.4);transition:transform .15s,box-shadow .15s;border:none;}
-.vl-btn-pri:hover{transform:translateY(-2px);box-shadow:0 10px 32px rgba(99,102,241,.55);}
-.vl-btn-sec{display:inline-block;background:rgba(255,255,255,.7);color:#374151!important;font-size:15px;font-weight:600;padding:14px 36px;border-radius:12px;text-decoration:none;cursor:pointer;border:1px solid rgba(139,92,246,.2);backdrop-filter:blur(10px);transition:transform .15s;}
-.vl-btn-sec:hover{transform:translateY(-2px);}
-
-.vl-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:48px;}
-.vl-feat{background:rgba(255,255,255,.72);border:1px solid rgba(139,92,246,.14);border-radius:16px;padding:22px 20px;backdrop-filter:blur(24px);box-shadow:0 4px 20px rgba(99,102,241,.08);transition:transform .2s;}
-.vl-feat:hover{transform:translateY(-3px);}
-.vl-feat-icon{font-size:26px;margin-bottom:10px;}
-.vl-feat-title{font-size:14px;font-weight:700;color:#1E1B4B;margin-bottom:6px;}
-.vl-feat-desc{font-size:12px;color:#6B7280;line-height:1.6;}
-
-.vl-agents{background:rgba(255,255,255,.55);border:1px solid rgba(139,92,246,.12);border-radius:20px;padding:28px;backdrop-filter:blur(24px);margin-bottom:48px;box-shadow:0 8px 32px rgba(99,102,241,.08);}
-.vl-agents-title{font-size:13px;font-weight:700;color:#6366F1;letter-spacing:.08em;margin-bottom:16px;}
-.vl-agent-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid rgba(139,92,246,.08);}
-.vl-agent-row:last-child{border-bottom:none;}
-.vl-agent-num{min-width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6366F1,#A855F7);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;}
-.vl-agent-name{font-size:13px;font-weight:700;color:#1E1B4B;}
-.vl-agent-desc{font-size:11px;color:#6B7280;margin-top:2px;}
-
-.vl-footer{text-align:center;font-size:11px;color:#9CA3AF;padding-bottom:32px;}
-</style>
-<div class="vl-orbs">
-  <div class="vl-orb vl-o1"></div>
-  <div class="vl-orb vl-o2"></div>
-  <div class="vl-orb vl-o3"></div>
-</div>
-<div class="vl-wrap">
-  <div class="vl-hero">
-    <div class="vl-logo" style="font-size:28px;font-weight:900;font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:-.04em;color:#fff;">V</div>
-    <div class="vl-badge">AI · MULTI-AGENT · 30s REPORT</div>
-    <div class="vl-h1">上传竞品截图<br><span>30 秒知道为什么它爆</span></div>
-    <div class="vl-sub">VIRA 是面向内容创作者和电商运营的 AI 竞品分析工具。<br>
-    四个专家 Agent 并发分析，输出完整爆款基因报告。</div>
+    # ── Hero ─────────────────────────────────────────────────────────────────
+    st.markdown("""
+<div class="lp-wrap">
+  <div class="lp-hero">
+    <div class="lp-badge">
+      <div class="lp-badge-dot"></div>
+      多模态 &nbsp;·&nbsp; RAG 知识库 &nbsp;·&nbsp; 4 个 AI 智能体协同
+    </div>
+    <div class="lp-h1">上传竞品视频<br><span class="grad">30 秒知道为什么它爆</span></div>
+    <div class="lp-sub">
+      不是让 AI 帮你<strong>写内容</strong>——<br>
+      而是真正看懂竞品，告诉你爆款密码在哪，<strong>你的版本怎么改</strong>。
+    </div>
+    <div class="lp-hero-cta-ph"></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("✨  免费开始使用", type="primary", use_container_width=True, key="land_signup"):
-            st.session_state.landing_passed = True
-            st.session_state.auth_mode = "signup"
-            st.rerun()
-        st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
-        if st.button("已有账户  →  登录", use_container_width=True, key="land_login"):
-            st.session_state.landing_passed = True
-            st.session_state.auth_mode = "login"
-            st.rerun()
+    # Hero CTA 按钮（真正可点击的 Streamlit 按钮）
+    st.markdown('<div class="lp-btn-row">', unsafe_allow_html=True)
+    _, _hc, _ = st.columns([1, 1.6, 1])
+    with _hc:
+        _ca, _cb = st.columns(2)
+        with _ca:
+            if st.button("🎬  上传视频，免费分析", type="primary",
+                         use_container_width=True, key="land_cta_main"):
+                st.session_state.landing_passed = True
+                st.session_state.auth_mode = "signup"
+                st.rerun()
+        with _cb:
+            if st.button("已有账户  登录 →",
+                         use_container_width=True, key="land_cta_login"):
+                st.session_state.landing_passed = True
+                st.session_state.auth_mode = "login"
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── Stats + Demo ─────────────────────────────────────────────────────────
     st.markdown("""
-<div class="vl-wrap">
-  <div class="vl-features">
-    <div class="vl-feat">
-      <div class="vl-feat-icon">🎯</div>
-      <div class="vl-feat-title">批量并发分析</div>
-      <div class="vl-feat-desc">一次上传多张截图，四 Agent 并发处理，每帧独立出报告</div>
+<div class="lp-wrap">
+  <div class="lp-stats">
+    <div class="lp-stat">
+      <div class="lp-stat-num">2,400<em>+</em></div>
+      <div class="lp-stat-label">创作者在用</div>
     </div>
-    <div class="vl-feat">
-      <div class="vl-feat-icon">🎬</div>
-      <div class="vl-feat-title">视频口播提取</div>
-      <div class="vl-feat-desc">上传视频，Whisper AI 自动转录口播文案，一键写入知识库</div>
+    <div class="lp-stat">
+      <div class="lp-stat-num">平均 <em>25</em> 秒</div>
+      <div class="lp-stat-label">出完整竞品报告</div>
     </div>
-    <div class="vl-feat">
-      <div class="vl-feat-icon">🔬</div>
-      <div class="vl-feat-title">爆款公式提炼</div>
-      <div class="vl-feat-desc">多样本横向对比，提炼可复用内容公式和方法论文档</div>
-    </div>
-    <div class="vl-feat">
-      <div class="vl-feat-icon">📋</div>
-      <div class="vl-feat-title">模板库复用</div>
-      <div class="vl-feat-desc">保存品牌知识库配置，下次一键套用，团队共享工作流</div>
+    <div class="lp-stat">
+      <div class="lp-stat-num">完播率平均 <em>+28%</em></div>
+      <div class="lp-stat-label">改版后</div>
     </div>
   </div>
+</div>
 
-  <div class="vl-agents">
-    <div class="vl-agents-title">// 四 AGENT 并发流水线</div>
-    <div class="vl-agent-row">
-      <div class="vl-agent-num">1</div>
-      <div><div class="vl-agent-name">视觉拆解师</div><div class="vl-agent-desc">提取 Hook 类型、视觉质量评分、情绪基调、关键视觉元素</div></div>
-    </div>
-    <div class="vl-agent-row">
-      <div class="vl-agent-num">2</div>
-      <div><div class="vl-agent-name">转化精算师</div><div class="vl-agent-desc">结合品牌知识库生成 3 套高转化商业脚本，含 Hook + CTA</div></div>
-    </div>
-    <div class="vl-agent-row">
-      <div class="vl-agent-num">3</div>
-      <div><div class="vl-agent-name">合规排雷兵</div><div class="vl-agent-desc">扫描 TikTok / 抖音违规风险，极限词 / 医疗声称 / 金融承诺</div></div>
-    </div>
-    <div class="vl-agent-row">
-      <div class="vl-agent-num">4</div>
-      <div><div class="vl-agent-name">策略执行官</div><div class="vl-agent-desc">汇总三路输出，给出置信度评分 + A/B Test 方案 + 最终裁决</div></div>
+<!-- Demo 产品预览窗口 -->
+<div class="lp-wrap" style="margin-top:56px;">
+  <div class="lp-demo-wrap">
+    <div class="lp-demo-win">
+      <div class="lp-demo-bar">
+        <div class="lp-demo-dot" style="background:#FF5F57;"></div>
+        <div class="lp-demo-dot" style="background:#FEBC2E;"></div>
+        <div class="lp-demo-dot" style="background:#28C840;"></div>
+        <div class="lp-demo-title">vira.ai &nbsp;·&nbsp; 正在分析「竞品爆款视频.mp4」&nbsp;·&nbsp; 已抽取 4 帧</div>
+      </div>
+      <div class="lp-demo-body">
+        <div class="lp-demo-frames">
+          <div class="lp-frame"><div class="lp-frame-emoji">🎬</div><div class="lp-frame-tag">F1 · 0s</div></div>
+          <div class="lp-frame"><div class="lp-frame-emoji">🔥</div><div class="lp-frame-tag">F2 · 3s</div></div>
+          <div class="lp-frame"><div class="lp-frame-emoji">✨</div><div class="lp-frame-tag">F3 · 8s</div></div>
+          <div class="lp-frame"><div class="lp-frame-emoji">🎯</div><div class="lp-frame-tag">F4 · 15s</div></div>
+        </div>
+        <div class="lp-demo-agents">
+          <div class="lp-da" style="border-color:#818CF8;">
+            <div class="lp-da-tag" style="color:#818CF8;">● AGENT A &nbsp;·&nbsp; 视觉提取</div>
+            <div class="lp-da-val">Hook 类型：悬念开场 ✓</div>
+            <div class="lp-da-sub">Hook 评分：87 / 100</div>
+          </div>
+          <div class="lp-da" style="border-color:#F87171;">
+            <div class="lp-da-tag" style="color:#F87171;">● AGENT B &nbsp;·&nbsp; 合规审查</div>
+            <div class="lp-da-val">风险级别：低 · 合规分 91</div>
+            <div class="lp-da-sub">无极限词 / 无违规声称</div>
+          </div>
+          <div class="lp-da" style="border-color:#34D399;">
+            <div class="lp-da-tag" style="color:#34D399;">● AGENT C &nbsp;·&nbsp; 爆款预测</div>
+            <div class="lp-da-val">病毒指数：82 / 100</div>
+            <div class="lp-da-sub">完播率预估 68%</div>
+          </div>
+        </div>
+        <div class="lp-demo-summary">
+          <div class="lp-ds-grade">A</div>
+          <div>
+            <div class="lp-ds-score">综合评分 88/100 · 高爆款潜力</div>
+            <div class="lp-ds-text">前 3 秒悬念 Hook 与目标受众高度匹配。建议将文案改为反常识结论式开场，
+预计完播率可从 68% 提升至 82%，转化率 +18%。</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="vl-footer">© 2026 VIRA · 保留所有权利 · 注册即获 5 份免费竞品报告</div>
+</div>
+
+<!-- ── "不只是 AI 分析" section ── -->
+<div id="how" class="lp-wrap lp-section">
+  <div style="font-size:11px;color:#6366F1;font-weight:700;letter-spacing:.14em;margin-bottom:10px;">// 真实的改变</div>
+  <div class="lp-sec-h2">不只是 AI 分析<br>是可执行的改版方案</div>
+  <div class="lp-sec-sub">每一条建议都量化到具体数字，每一个问题都给出可直接执行的替换方案。</div>
+
+  <div class="lp-ba-grid">
+    <div class="lp-card" style="padding:26px 24px;">
+      <div class="lp-ba-label" style="color:#F87171;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#F87171;flex-shrink:0;display:inline-block;"></span>
+        BEFORE &nbsp;·&nbsp; 以前你的工作方式
+      </div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">😮</span>手动反复刷竞品视频，靠感觉记录"好像是这个原因"</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">📋</span>用 Excel 记录截图 + 主观备注，无法复用，下次还得重来</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">🚫</span>发出去才发现文案有违规词，平台限流，投放白费</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">⏰</span>3 天时间做出来的竞品分析，老板说"不够深入"</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">🎲</span>改版靠猜，拍脑袋，效果好不好要等数据回来才知道</div>
+    </div>
+    <div class="lp-card" style="padding:26px 24px;">
+      <div class="lp-ba-label" style="color:#34D399;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#34D399;flex-shrink:0;display:inline-block;"></span>
+        AFTER &nbsp;·&nbsp; 有 VIRA 的工作方式
+      </div>
+      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>上传视频，25 秒得到结构化爆款公式分析</div>
+      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>四维知识库匹配，基于真实爆款规律，有据可查</div>
+      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>发布前合规扫描，高风险词精确标注并给出修改建议</div>
+      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>30 分钟出一份有数据、有建议、有改版方案的完整报告</div>
+      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>改版建议量化预测效果（完播率 +X%），有依据有底气</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 工作原理 ── -->
+<div class="lp-wrap lp-section">
+  <div class="lp-sec-tag">// 工作原理</div>
+  <div class="lp-sec-h2">3 步，从视频到改版方案</div>
+  <div class="lp-sec-sub">不是魔法，是真实的 AI 技术协同——多模态识别、知识库检索、多 Agent 并行分析。</div>
+  <div class="lp-steps">
+    <div class="lp-card lp-step">
+      <div class="lp-step-num">01</div>
+      <div class="lp-step-ico">🎬</div>
+      <div class="lp-step-body">
+        <div class="lp-step-title">上传视频或截图</div>
+        <div class="lp-step-desc">直接拖入 MP4 / MOV / AVI，或上传产品截图。系统自动从视频中提取关键帧，
+无需手动截图。视频文件完全在服务端安全处理，分析完成后自动清除。</div>
+        <div class="lp-step-chips">
+          <span class="lp-chip">多格式支持</span>
+          <span class="lp-chip">自动抽帧</span>
+          <span class="lp-chip">批量上传</span>
+        </div>
+      </div>
+    </div>
+    <div class="lp-card lp-step">
+      <div class="lp-step-num">02</div>
+      <div class="lp-step-ico">⚡</div>
+      <div class="lp-step-body">
+        <div class="lp-step-title">4 个 AI 智能体并行分析</div>
+        <div class="lp-step-desc">视觉提取、合规审查、爆款预测三个 Agent 同步运行，不到 20 秒完成。
+综合 Agent 汇总给出最终判决。每个 Agent 都挂载专属 RAG 知识库，有据可依。</div>
+        <div class="lp-step-chips">
+          <span class="lp-chip">Multi-Agent × RAG</span>
+          <span class="lp-chip">并行架构</span>
+          <span class="lp-chip">知识库增强</span>
+        </div>
+      </div>
+    </div>
+    <div class="lp-card lp-step">
+      <div class="lp-step-num">03</div>
+      <div class="lp-step-ico">📋</div>
+      <div class="lp-step-body">
+        <div class="lp-step-title">得到可执行的改版方案</div>
+        <div class="lp-step-desc">不是"建议你优化 Hook"——而是"把第 2 秒的文字改成 XX，预计完播率从 65% 提升至 81%"
+这种级别的具体建议。S/A/B/C/D 评级 + 逐条改版指令 + 发布时机建议。</div>
+        <div class="lp-step-chips">
+          <span class="lp-chip">结构化输出</span>
+          <span class="lp-chip">可直接执行</span>
+          <span class="lp-chip">PDF 导出</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 4个Agent ── -->
+<div id="agents" class="lp-wrap lp-section">
+  <div class="lp-sec-tag">// AI 智能体</div>
+  <div class="lp-sec-h2">4 个专家 Agent<br>各司其职，协同出击</div>
+  <div class="lp-sec-sub">每个 Agent 都有专属的知识库和分析视角，结合在一起才是完整的判断。</div>
+  <div class="lp-ag3">
+    <div class="lp-card lp-ag-card">
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#818CF8;"></div><span style="color:#818CF8;">AGENT A</span></div>
+      <div class="lp-ag-ico">👁️</div>
+      <div class="lp-ag-name">视觉提取师</div>
+      <div class="lp-ag-role">逐帧分析画面，比人眼更精准</div>
+      <div class="lp-ag-desc">分析前 3 秒 Hook 类型、画面色彩情绪、文字布局质量、
+切换节奏——和爆款规律知识库对比，给出 Hook 评分。</div>
+      <div class="lp-ag-chips">
+        <span class="lp-ag-chip">Hook 类型识别</span>
+        <span class="lp-ag-chip">色彩情绪分析</span>
+        <span class="lp-ag-chip">视觉评分</span>
+      </div>
+    </div>
+    <div class="lp-card lp-ag-card">
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#F87171;"></div><span style="color:#F87171;">AGENT B</span></div>
+      <div class="lp-ag-ico">🛡️</div>
+      <div class="lp-ag-name">合规审查官</div>
+      <div class="lp-ag-role">发布前的最后一道防线</div>
+      <div class="lp-ag-desc">比对平台合规规则库，精准识别极限用语、医疗声称、
+金融承诺等高风险内容，给出风险级别和修改建议。</div>
+      <div class="lp-ag-chips">
+        <span class="lp-ag-chip">违规词检测</span>
+        <span class="lp-ag-chip">风险分级</span>
+        <span class="lp-ag-chip">修改建议</span>
+      </div>
+    </div>
+    <div class="lp-card lp-ag-card">
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#34D399;"></div><span style="color:#34D399;">AGENT C</span></div>
+      <div class="lp-ag-ico">📈</div>
+      <div class="lp-ag-name">增长预测官</div>
+      <div class="lp-ag-role">用数据说话，不靠直觉</div>
+      <div class="lp-ag-desc">基于情绪强度、实用价值、身份认同、稀缺感、社交货币
+五维病毒传播因子模型，预测完播率和传播潜力。</div>
+      <div class="lp-ag-chips">
+        <span class="lp-ag-chip">完播率预测</span>
+        <span class="lp-ag-chip">受众画像</span>
+        <span class="lp-ag-chip">发布时机</span>
+      </div>
+    </div>
+  </div>
+  <div class="lp-card lp-ag-d">
+    <div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#C084FC;"></div><span style="color:#C084FC;">AGENT D &nbsp;·&nbsp; 综合汇总</span></div>
+      <div class="lp-ag-ico">🔮</div>
+      <div class="lp-ag-name">重构总监</div>
+      <div class="lp-ag-role" style="margin-bottom:10px;">读取 A+B+C 全部结果，输出最终判决</div>
+      <div class="lp-ag-desc" style="font-size:13px;color:rgba(255,255,255,.52);line-height:1.65;">
+        综合三个专家 Agent 的分析，给出 S/A/B/C/D 综合评级，以及前 3 秒改法、
+        视觉升级点、文案优化方向、发布策略的完整改版方案。</div>
+    </div>
+    <div class="lp-ag-d-output">
+      <div class="lp-ag-d-example">OUTPUT EXAMPLE</div>
+      <div class="lp-ag-d-grade">A 级 · 高爆款潜力</div>
+      <div class="lp-ag-d-score">88/100 · 完播率预估 +24%</div>
+      <div class="lp-ag-d-desc">改版方向：将第 2 秒文字换为反常识结论式开场，
+删除「最佳」等极限词，在视频第 8 秒增加利益点强化留存……</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 用户评价 ── -->
+<div class="lp-wrap lp-section">
+  <div class="lp-sec-tag">// 用户评价</div>
+  <div class="lp-sec-h2">他们用了之后说</div>
+  <div class="lp-reviews">
+    <div class="lp-card lp-review">
+      <div class="lp-stars">★★★★★</div>
+      <div class="lp-rv-text">以前分析一个竞品视频要花半天，现在 25 秒。关键是建议真的很具体，
+不是那种「建议优化视觉呈现」的废话。</div>
+      <div class="lp-rv-by">
+        <div class="lp-rv-avatar" style="background:linear-gradient(135deg,#6366F1,#A855F7);">陈</div>
+        <div><div class="lp-rv-name">陈 ××</div><div class="lp-rv-role">美妆品牌内容总监</div></div>
+      </div>
+    </div>
+    <div class="lp-card lp-review">
+      <div class="lp-stars">★★★★★</div>
+      <div class="lp-rv-text">合规检查这个功能太救命了，我们之前有一条投了 3 万的素材
+因为有极限词被限流。现在发布前必查。</div>
+      <div class="lp-rv-by">
+        <div class="lp-rv-avatar" style="background:linear-gradient(135deg,#059669,#10B981);">王</div>
+        <div><div class="lp-rv-name">王 ××</div><div class="lp-rv-role">MCN 运营总监</div></div>
+      </div>
+    </div>
+    <div class="lp-card lp-review">
+      <div class="lp-stars">★★★★☆</div>
+      <div class="lp-rv-text">作为独立创作者，最有价值的是爆款因子评分，
+能量化地知道哪个维度需要提升，不再全靠感觉。</div>
+      <div class="lp-rv-by">
+        <div class="lp-rv-avatar" style="background:linear-gradient(135deg,#D97706,#F59E0B);">李</div>
+        <div><div class="lp-rv-name">李 ××</div><div class="lp-rv-role">百万粉创作者</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── FAQ ── -->
+<div class="lp-wrap lp-section" style="padding-bottom:20px;">
+  <div class="lp-sec-tag">// 常见问题</div>
+  <div class="lp-sec-h2" style="margin-bottom:36px;">你可能想问的</div>
+  <div class="lp-faqs">
+    <details class="lp-faq">
+      <summary>视频文件会被保存在服务器上吗？</summary>
+      <p>不会。视频上传后仅用于分析期间的帧提取和 AI 处理，分析完成后原始文件即从临时存储中删除，不会永久保存。</p>
+    </details>
+    <details class="lp-faq">
+      <summary>支持哪些视频格式？</summary>
+      <p>支持 MP4、MOV、AVI、WebM 等主流格式。图片支持 JPG、PNG、WebP。单个文件建议不超过 200MB。</p>
+    </details>
+    <details class="lp-faq">
+      <summary>分析结果有多准确？</summary>
+      <p>AI 分析基于真实爆款规律知识库，Hook 类型识别和合规检测准确率超过 90%。完播率预测为参考估算，实际结果受发布时间、受众匹配度等因素影响。</p>
+    </details>
+    <details class="lp-faq">
+      <summary>分析竞品视频会有版权问题吗？</summary>
+      <p>不会。VIRA 仅对你上传的内容进行本地分析，不存储、不传播原始视频。参考竞品进行学习和改版是正常的商业研究行为，符合合理使用原则。</p>
+    </details>
+    <details class="lp-faq" id="pricing">
+      <summary>定价是怎样的？</summary>
+      <p>注册即赠送 5 份免费竞品报告，可先体验再决定。后续可通过订阅 VIRA Pro 获得无限报告额度和更高日分析量。如需团队版或企业定制，请联系 support@vira.ai。</p>
+    </details>
+    <details class="lp-faq">
+      <summary>知识库是怎么更新的？</summary>
+      <p>VIRA 会持续维护多平台（抖音 / TikTok / 小红书）的爆款规律知识库，并定期更新合规规则库。Pro 用户可上传品牌私有知识库，实现个性化分析。</p>
+    </details>
+  </div>
+</div>
+
+<!-- ── 最终 CTA ── -->
+<div class="lp-wrap">
+  <div class="lp-final">
+    <div class="lp-final-h2">下一条爆款<br>从看懂竞品开始</div>
+    <div class="lp-final-sub">不靠感觉，不靠运气。上传一个竞品视频，25 秒后你就知道接下来该怎么做。</div>
+    <div class="lp-cta-ph"></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # 最终 CTA 按钮
+    st.markdown('<div class="lp-btn-row">', unsafe_allow_html=True)
+    _, _fc, _ = st.columns([1.5, 1.4, 1.5])
+    with _fc:
+        _fa, _fb = st.columns(2)
+        with _fa:
+            if st.button("🚀  免费开始分析", type="primary",
+                         use_container_width=True, key="final_cta_main"):
+                st.session_state.landing_passed = True
+                st.session_state.auth_mode = "signup"
+                st.rerun()
+        with _fb:
+            if st.button("看演示  →",
+                         use_container_width=True, key="final_cta_demo"):
+                st.session_state.landing_passed = True
+                st.session_state.auth_mode = "login"
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Ticker + Footer
+    st.markdown("""
+<div style="height:64px;"></div>
+<div class="lp-ticker-wrap">
+  <div class="lp-ticker">
+    <span class="lp-ticker-item">🎯 Hook 类型识别<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🛡️ 合规风险扫描<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">📈 完播率预测<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🔬 爆款公式提炼<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🎬 视频口播转录<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">📋 改版方案输出<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🤖 Multi-Agent RAG<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">⚡ 25 秒出报告<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🎯 Hook 类型识别<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🛡️ 合规风险扫描<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">📈 完播率预测<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🔬 爆款公式提炼<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🎬 视频口播转录<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">📋 改版方案输出<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">🤖 Multi-Agent RAG<span class="lp-ticker-sep">·</span></span>
+    <span class="lp-ticker-item">⚡ 25 秒出报告<span class="lp-ticker-sep">·</span></span>
+  </div>
+</div>
+<div style="max-width:100%;background:#080910;border-top:1px solid rgba(255,255,255,.04);padding:24px 48px;
+            display:flex;justify-content:space-between;align-items:center;">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div style="width:8px;height:8px;border-radius:50%;
+                background:linear-gradient(135deg,#6366F1,#A855F7);"></div>
+    <span style="font-size:14px;font-weight:900;color:#fff;">VIRA</span>
+    <span style="font-size:12px;color:rgba(255,255,255,.22);margin-left:12px;">
+      爆款侦察兵</span>
+  </div>
+  <div style="font-size:12px;color:rgba(255,255,255,.2);">
+    © 2026 VIRA &nbsp;·&nbsp; Powered by GPT-4o &nbsp;·&nbsp; Multi-Agent + RAG
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
