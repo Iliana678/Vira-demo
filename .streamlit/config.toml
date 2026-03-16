@@ -1,6 +1,4 @@
 [server]
-# Streamlit Community Cloud 会忽略 port，但本地开发保留
-# headless = true 避免本地自动打开浏览器（CI 友好）
 headless = true
 enableCORS = false
 enableXsrfProtection = true
@@ -10,3 +8,7 @@ gatherUsageStats = false
 
 [theme]
 base = "dark"
+primaryColor = "#6366F1"
+backgroundColor = "#080C1E"
+secondaryBackgroundColor = "#0E1228"
+textColor = "#E2E8F0"

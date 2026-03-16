@@ -775,6 +775,7 @@ def _init_state() -> None:
         "authenticated":       False,
         "user_info":           None,
         "auth_mode":           "login",   # "login" | "signup"
+        "landing_passed":      False,     # 是否已看过产品落地页
         # ── AI 客服 ───────────────────────────────────────────
         "cs_open":             False,
         "cs_history":          [],
@@ -924,27 +925,48 @@ def _render_auth_page() -> None:
 }
 [data-testid="stForm"] input::placeholder { color: #9CA3AF !important; }
 
-/* 按钮 */
-[data-testid="stForm"] .stButton button[kind="primaryFormSubmit"],
-[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+/* 主提交按钮：强制紫色渐变（覆盖 Streamlit 红色默认值）*/
+button[kind="primaryFormSubmit"],
+button[data-testid="baseButton-primaryFormSubmit"],
+[data-testid="stForm"] button[kind="primaryFormSubmit"],
+[data-testid="stForm"] button[data-testid="baseButton-primaryFormSubmit"],
+.stButton > button[kind="primary"],
+.stButton > button[data-testid="baseButton-primary"] {
     background: linear-gradient(135deg,#6366F1 0%,#A855F7 100%) !important;
     border: none !important;
+    color: #fff !important;
     box-shadow: 0 4px 20px rgba(99,102,241,.4) !important;
-    transition: transform .15s,box-shadow .15s !important;
+    transition: transform .15s, box-shadow .15s !important;
 }
-[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+button[kind="primaryFormSubmit"]:hover,
+button[data-testid="baseButton-primaryFormSubmit"]:hover,
+.stButton > button[kind="primary"]:hover {
     transform: translateY(-1px) !important;
     box-shadow: 0 8px 28px rgba(99,102,241,.55) !important;
 }
 
-/* 切换按钮（注册/登录互切） */
-.vira-auth-switch button {
+/* 切换按钮（注册/登录互切）*/
+.vira-auth-switch .stButton > button {
     color: #6366F1 !important;
-    background: transparent !important;
-    border: 1px solid rgba(99,102,241,.25) !important;
+    background: rgba(99,102,241,.06) !important;
+    border: 1px solid rgba(99,102,241,.22) !important;
     border-radius: 10px !important;
-    font-size: 12px !important;
+    font-size: 13px !important;
+    transition: background .15s !important;
 }
+.vira-auth-switch .stButton > button:hover {
+    background: rgba(99,102,241,.12) !important;
+}
+
+/* 返回首页链接 */
+.vira-back-home {
+    text-align:center; margin-bottom:8px;
+}
+.vira-back-home a {
+    font-size:12px; color:#9CA3AF; text-decoration:none;
+    transition: color .15s;
+}
+.vira-back-home a:hover { color:#6366F1; }
 </style>
 
 <!-- 极光光球层 -->
@@ -978,6 +1000,15 @@ def _render_auth_page() -> None:
     # ── 消息槽（表单上方，渲染错误/成功提示）─────────────────────────────────
     _msg_slot = st.empty()
 
+    # ── 返回首页链接 ────────────────────────────────────────────────────────
+    st.markdown('<div class="vira-back-home"><a href="#" onclick="window.location.reload()">← 返回首页</a></div>',
+                unsafe_allow_html=True)
+    _back_col1, _back_col2, _back_col3 = st.columns([1, 2, 1])
+    with _back_col2:
+        if st.button("← 返回首页", key="back_to_landing", use_container_width=False):
+            st.session_state.landing_passed = False
+            st.rerun()
+
     # ── 登录表单 ────────────────────────────────────────────────────────────
     if not is_signup:
         with st.form("vira_login_form", clear_on_submit=False):
@@ -1002,11 +1033,56 @@ def _render_auth_page() -> None:
                 except Exception as _e:
                     _msg_slot.error(f"服务暂不可用：{_e}")
 
+        # 忘记密码 ────────────────────────────────────────────────────────────
+        _, _fp_mid, _ = st.columns([1, 2, 1])
+        with _fp_mid:
+            with st.expander("忘记密码？", expanded=False):
+                st.markdown(
+                    "<p style='font-size:12px;color:#6B7280;margin-bottom:8px;'>"
+                    "通过邮箱直接重置密码（无需邮件验证）</p>",
+                    unsafe_allow_html=True,
+                )
+                _fp_email = st.text_input("注册邮箱", placeholder="name@example.com",
+                                          key="fp_email")
+                _fp_pwd   = st.text_input("新密码", placeholder="至少 6 位",
+                                          type="password", key="fp_pwd")
+                _fp_pwd2  = st.text_input("确认新密码", placeholder="再输入一次",
+                                          type="password", key="fp_pwd2")
+                if st.button("确认重置密码", use_container_width=True, key="fp_submit"):
+                    if not _fp_email or not _fp_pwd:
+                        st.error("请填写邮箱和新密码")
+                    elif _fp_pwd != _fp_pwd2:
+                        st.error("两次密码不一致")
+                    elif len(_fp_pwd) < 6:
+                        st.error("密码至少 6 位")
+                    else:
+                        try:
+                            from services.auth import reset_password as _auth_reset
+                            _rk, _rm = _auth_reset(_fp_email, _fp_pwd)
+                            if _rk:
+                                st.success("✅ 密码已重置，请重新登录")
+                            else:
+                                st.error(_rm)
+                        except Exception as _e:
+                            st.error(f"服务暂不可用：{_e}")
+                st.markdown(
+                    "<p style='font-size:11px;color:#9CA3AF;margin-top:10px;text-align:center;'>"
+                    "如仍有问题，请联系 <a href='mailto:support@vira.ai' "
+                    "style='color:#6366F1;'>support@vira.ai</a></p>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown('<div class="vira-auth-switch">', unsafe_allow_html=True)
         _, _mid, _ = st.columns([1, 2, 1])
         with _mid:
-            if st.button("还没有账户？立即注册", use_container_width=True, key="go_signup"):
+            st.markdown(
+                "<div style='text-align:center;margin-top:4px;font-size:12px;color:#6B7280;'>还没有账户？</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("立即免费注册", use_container_width=True, key="go_signup"):
                 st.session_state.auth_mode = "signup"
                 st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ── 注册表单 ────────────────────────────────────────────────────────────
     else:
@@ -1016,7 +1092,7 @@ def _render_auth_page() -> None:
             _pwd   = st.text_input("密码 *",       placeholder="至少 6 位", type="password")
             _pwd2  = st.text_input("确认密码 *",   placeholder="再输入一次", type="password")
             _sub   = st.form_submit_button(
-                "注册账户 →  （免费获得 5 份竞品报告）", use_container_width=True, type="primary"
+                "免费注册  →  获得 5 份竞品报告", use_container_width=True, type="primary"
             )
         if _sub:
             if not _email or not _pwd:
@@ -1036,11 +1112,17 @@ def _render_auth_page() -> None:
                 except Exception as _e:
                     _msg_slot.error(f"服务暂不可用：{_e}")
 
+        st.markdown('<div class="vira-auth-switch">', unsafe_allow_html=True)
         _, _mid, _ = st.columns([1, 2, 1])
         with _mid:
-            if st.button("已有账户？点击登录", use_container_width=True, key="go_login"):
+            st.markdown(
+                "<div style='text-align:center;margin-top:4px;font-size:12px;color:#6B7280;'>已有账户？</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("点击登录", use_container_width=True, key="go_login"):
                 st.session_state.auth_mode = "login"
                 st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ── 页脚 ──────────────────────────────────────────────────────────────────
     st.markdown("""
@@ -1051,9 +1133,144 @@ def _render_auth_page() -> None:
 """, unsafe_allow_html=True)
 
 
-# ── 鉴权守卫（未登录则展示鉴权页并停止渲染主 App）─────────────────────────────
+# ── 产品落地页 ────────────────────────────────────────────────────────────────
+def _render_landing_page() -> None:
+    st.markdown("""
+<style>
+[data-testid="stSidebar"],[data-testid="stSidebarNav"],.vira-nav{display:none!important;}
+[data-testid="stMainBlockContainer"]{max-width:860px!important;padding:0 24px 64px!important;margin:0 auto!important;}
+
+/* 极光背景（复用认证页） */
+@keyframes vira-land-aurora{0%,100%{background-position:0% 50%;}50%{background-position:100% 50%;}}
+@keyframes vira-land-orb1{0%,100%{transform:translate(0,0) scale(1);}40%{transform:translate(50px,-40px) scale(1.06);}70%{transform:translate(-30px,50px) scale(.95);}}
+@keyframes vira-land-orb2{0%,100%{transform:translate(0,0);}35%{transform:translate(-60px,35px);}70%{transform:translate(40px,-55px);}}
+@keyframes vira-land-orb3{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(35px,60px) scale(1.08);}}
+@keyframes vira-hero-in{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:none;}}
+@keyframes vira-logo-pulse{0%,100%{box-shadow:0 8px 40px rgba(99,102,241,.5);}50%{box-shadow:0 12px 70px rgba(168,85,247,.75),0 0 40px 12px rgba(168,85,247,.18);}}
+@keyframes vira-badge-glow{0%,100%{opacity:.7;}50%{opacity:1;}}
+
+.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],body{
+    background:#EEF0FF!important;background-image:none!important;animation:none!important;}
+
+.vl-orbs{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;}
+.vl-orb{position:absolute;border-radius:50%;filter:blur(85px);}
+.vl-o1{width:700px;height:700px;background:radial-gradient(circle,rgba(196,181,253,.8) 0%,rgba(129,140,248,.35) 50%,transparent 75%);top:-220px;left:-200px;animation:vira-land-orb1 14s ease-in-out infinite;}
+.vl-o2{width:580px;height:580px;background:radial-gradient(circle,rgba(147,197,253,.75) 0%,rgba(96,165,250,.3) 50%,transparent 75%);bottom:-160px;right:-160px;animation:vira-land-orb2 11s ease-in-out infinite;}
+.vl-o3{width:420px;height:420px;background:radial-gradient(circle,rgba(249,168,212,.7) 0%,rgba(192,132,252,.3) 50%,transparent 75%);top:40%;left:58%;animation:vira-land-orb3 9s ease-in-out infinite;}
+
+.vl-wrap{position:relative;z-index:1;}
+.vl-hero{text-align:center;padding:64px 0 48px;animation:vira-hero-in .7s ease both;}
+.vl-logo{width:72px;height:72px;border-radius:20px;margin:0 auto 22px;background:linear-gradient(135deg,#6366F1 0%,#A855F7 100%);display:flex;align-items:center;justify-content:center;font-size:34px;animation:vira-logo-pulse 3s ease-in-out infinite;}
+.vl-badge{display:inline-block;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);color:#6366F1;font-size:11px;font-weight:700;letter-spacing:.1em;padding:4px 14px;border-radius:20px;margin-bottom:16px;animation:vira-badge-glow 2.5s ease-in-out infinite;}
+.vl-h1{font-family:'Plus Jakarta Sans',sans-serif;font-size:clamp(28px,5vw,46px);font-weight:800;color:#1E1B4B;line-height:1.18;letter-spacing:-.02em;margin-bottom:16px;}
+.vl-h1 span{background:linear-gradient(90deg,#6366F1,#A855F7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.vl-sub{font-size:clamp(14px,2vw,17px);color:#6B7280;line-height:1.7;max-width:560px;margin:0 auto 36px;}
+.vl-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:56px;}
+.vl-btn-pri{display:inline-block;background:linear-gradient(135deg,#6366F1,#A855F7);color:#fff!important;font-size:15px;font-weight:700;padding:14px 36px;border-radius:12px;text-decoration:none;cursor:pointer;box-shadow:0 6px 24px rgba(99,102,241,.4);transition:transform .15s,box-shadow .15s;border:none;}
+.vl-btn-pri:hover{transform:translateY(-2px);box-shadow:0 10px 32px rgba(99,102,241,.55);}
+.vl-btn-sec{display:inline-block;background:rgba(255,255,255,.7);color:#374151!important;font-size:15px;font-weight:600;padding:14px 36px;border-radius:12px;text-decoration:none;cursor:pointer;border:1px solid rgba(139,92,246,.2);backdrop-filter:blur(10px);transition:transform .15s;}
+.vl-btn-sec:hover{transform:translateY(-2px);}
+
+.vl-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:48px;}
+.vl-feat{background:rgba(255,255,255,.72);border:1px solid rgba(139,92,246,.14);border-radius:16px;padding:22px 20px;backdrop-filter:blur(24px);box-shadow:0 4px 20px rgba(99,102,241,.08);transition:transform .2s;}
+.vl-feat:hover{transform:translateY(-3px);}
+.vl-feat-icon{font-size:26px;margin-bottom:10px;}
+.vl-feat-title{font-size:14px;font-weight:700;color:#1E1B4B;margin-bottom:6px;}
+.vl-feat-desc{font-size:12px;color:#6B7280;line-height:1.6;}
+
+.vl-agents{background:rgba(255,255,255,.55);border:1px solid rgba(139,92,246,.12);border-radius:20px;padding:28px;backdrop-filter:blur(24px);margin-bottom:48px;box-shadow:0 8px 32px rgba(99,102,241,.08);}
+.vl-agents-title{font-size:13px;font-weight:700;color:#6366F1;letter-spacing:.08em;margin-bottom:16px;}
+.vl-agent-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid rgba(139,92,246,.08);}
+.vl-agent-row:last-child{border-bottom:none;}
+.vl-agent-num{min-width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6366F1,#A855F7);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;}
+.vl-agent-name{font-size:13px;font-weight:700;color:#1E1B4B;}
+.vl-agent-desc{font-size:11px;color:#6B7280;margin-top:2px;}
+
+.vl-footer{text-align:center;font-size:11px;color:#9CA3AF;padding-bottom:32px;}
+</style>
+<div class="vl-orbs">
+  <div class="vl-orb vl-o1"></div>
+  <div class="vl-orb vl-o2"></div>
+  <div class="vl-orb vl-o3"></div>
+</div>
+<div class="vl-wrap">
+  <div class="vl-hero">
+    <div class="vl-logo">✦</div>
+    <div class="vl-badge">AI · MULTI-AGENT · 30s REPORT</div>
+    <div class="vl-h1">上传竞品截图<br><span>30 秒知道为什么它爆</span></div>
+    <div class="vl-sub">VIRA 是面向内容创作者和电商运营的 AI 竞品分析工具。<br>
+    四个专家 Agent 并发分析，输出完整爆款基因报告。</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("✨  免费开始使用", type="primary", use_container_width=True, key="land_signup"):
+            st.session_state.landing_passed = True
+            st.session_state.auth_mode = "signup"
+            st.rerun()
+        st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+        if st.button("已有账户  →  登录", use_container_width=True, key="land_login"):
+            st.session_state.landing_passed = True
+            st.session_state.auth_mode = "login"
+            st.rerun()
+
+    st.markdown("""
+<div class="vl-wrap">
+  <div class="vl-features">
+    <div class="vl-feat">
+      <div class="vl-feat-icon">🎯</div>
+      <div class="vl-feat-title">批量并发分析</div>
+      <div class="vl-feat-desc">一次上传多张截图，四 Agent 并发处理，每帧独立出报告</div>
+    </div>
+    <div class="vl-feat">
+      <div class="vl-feat-icon">🎬</div>
+      <div class="vl-feat-title">视频口播提取</div>
+      <div class="vl-feat-desc">上传视频，Whisper AI 自动转录口播文案，一键写入知识库</div>
+    </div>
+    <div class="vl-feat">
+      <div class="vl-feat-icon">🔬</div>
+      <div class="vl-feat-title">爆款公式提炼</div>
+      <div class="vl-feat-desc">多样本横向对比，提炼可复用内容公式和方法论文档</div>
+    </div>
+    <div class="vl-feat">
+      <div class="vl-feat-icon">📋</div>
+      <div class="vl-feat-title">模板库复用</div>
+      <div class="vl-feat-desc">保存品牌知识库配置，下次一键套用，团队共享工作流</div>
+    </div>
+  </div>
+
+  <div class="vl-agents">
+    <div class="vl-agents-title">// 四 AGENT 并发流水线</div>
+    <div class="vl-agent-row">
+      <div class="vl-agent-num">1</div>
+      <div><div class="vl-agent-name">视觉拆解师</div><div class="vl-agent-desc">提取 Hook 类型、视觉质量评分、情绪基调、关键视觉元素</div></div>
+    </div>
+    <div class="vl-agent-row">
+      <div class="vl-agent-num">2</div>
+      <div><div class="vl-agent-name">转化精算师</div><div class="vl-agent-desc">结合品牌知识库生成 3 套高转化商业脚本，含 Hook + CTA</div></div>
+    </div>
+    <div class="vl-agent-row">
+      <div class="vl-agent-num">3</div>
+      <div><div class="vl-agent-name">合规排雷兵</div><div class="vl-agent-desc">扫描 TikTok / 抖音违规风险，极限词 / 医疗声称 / 金融承诺</div></div>
+    </div>
+    <div class="vl-agent-row">
+      <div class="vl-agent-num">4</div>
+      <div><div class="vl-agent-name">策略执行官</div><div class="vl-agent-desc">汇总三路输出，给出置信度评分 + A/B Test 方案 + 最终裁决</div></div>
+    </div>
+  </div>
+  <div class="vl-footer">© 2026 VIRA · 注册即获 5 份免费竞品报告</div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ── 鉴权守卫 ──────────────────────────────────────────────────────────────────
 if not st.session_state.authenticated:
-    _render_auth_page()
+    if not st.session_state.get("landing_passed", False):
+        _render_landing_page()
+    else:
+        _render_auth_page()
     st.stop()
 
 

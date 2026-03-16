@@ -378,6 +378,33 @@ def redeem_gift_code(email: str, code: str) -> tuple[bool, str, int]:
         return False, f"兑换出错：{e}", 0
 
 
+# ── 密码重置（无邮件验证，MVP 版）─────────────────────────────────────────────
+
+def reset_password(email: str, new_password: str) -> tuple[bool, str]:
+    """重置已注册账户的密码（直接覆盖，不发邮件）。"""
+    if len(new_password) < 6:
+        return False, "密码至少 6 位"
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            row = conn.execute(
+                "SELECT id FROM vira_users WHERE email=?", (email.lower().strip(),)
+            ).fetchone()
+            if not row:
+                return False, "该邮箱未注册，请先创建账户"
+            salt = os.urandom(16).hex()
+            hashed = hashlib.pbkdf2_hmac(
+                "sha256", new_password.encode(), salt.encode(), 260_000
+            ).hex()
+            conn.execute(
+                "UPDATE vira_users SET password_hash=?, salt=? WHERE email=?",
+                (hashed, salt, email.lower().strip()),
+            )
+        return True, "密码已重置"
+    except Exception as exc:
+        logger.error("reset_password error: %s", exc)
+        return False, "服务异常，请稍后重试"
+
+
 # ── 统计 ──────────────────────────────────────────────────────────────────────
 
 def get_stats() -> dict:
