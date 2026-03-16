@@ -987,10 +987,16 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
     st.markdown(f"""
 <div style="text-align:center;padding:52px 0 24px;animation:vira-fade-up .6s ease both;">
   <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 18px;
-              background:linear-gradient(135deg,#6366F1 0%,#A855F7 100%);
+              background:linear-gradient(135deg,#818CF8 0%,#C084FC 100%);
               display:inline-flex;align-items:center;justify-content:center;
-              font-size:22px;font-weight:900;font-family:'Plus Jakarta Sans',sans-serif;
-              letter-spacing:-.04em;animation:vira-logo-pulse 3s ease-in-out infinite;">V</div>
+              box-shadow:0 8px 32px rgba(129,140,248,.4);
+              animation:vira-logo-pulse 3s ease-in-out infinite;position:relative;">
+    <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 22 L10 22 L14 11 L22 33 L30 5 L34 22 L42 22"
+            stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="30" cy="5" r="2.8" fill="rgba(255,255,255,0.65)"/>
+    </svg>
+  </div>
   <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;
               font-weight:800;color:#1E1B4B;margin-bottom:6px;letter-spacing:-.02em;">
     {title}</div>
@@ -1405,6 +1411,31 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
 .lp-footer-brand-name{font-size:14px;font-weight:800;color:#fff;}
 .lp-footer-copy{font-size:12px;color:rgba(255,255,255,.22);}
 
+/* ── VIRA 品牌图标（心电波形）────────────────────────────────────────── */
+@keyframes vira-ring-out{0%{transform:scale(1);opacity:.65}70%{transform:scale(1.22);opacity:0}100%{transform:scale(1.22);opacity:0}}
+@keyframes vira-wave-draw{from{stroke-dashoffset:120}to{stroke-dashoffset:0}}
+.vira-icon-box{display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#818CF8 0%,#C084FC 100%);
+  flex-shrink:0;position:relative;}
+.vira-icon-box::after{content:'';position:absolute;inset:-5px;
+  border-radius:inherit;border:1.5px solid rgba(129,140,248,.5);
+  animation:vira-ring-out 2.8s ease-out infinite;}
+.vira-icon-box svg path{stroke-dasharray:120;stroke-dashoffset:0;
+  animation:vira-wave-draw 1.2s ease both;}
+
+/* ── 特性亮点卡片（Braintrust 风格）─────────────────────────────────── */
+.lp-feats{display:grid;grid-template-columns:1fr 1fr;gap:14px;
+  margin:56px 0 72px;}
+.lp-feat-card{display:flex;gap:16px;align-items:flex-start;
+  background:#0E0F1A;border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;padding:22px 20px;transition:border-color .2s,transform .15s;}
+.lp-feat-card:hover{border-color:rgba(129,140,248,.3);transform:translateY(-2px);}
+.lp-feat-ico{width:46px;height:46px;border-radius:13px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:21px;
+  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);}
+.lp-feat-title{font-size:15px;font-weight:800;color:#fff;margin-bottom:5px;}
+.lp-feat-body{font-size:13px;color:rgba(255,255,255,.45);line-height:1.65;}
+
 /* 隐藏 Streamlit 按钮默认装饰 */
 .lp-btn-row .stButton>button{
   border-radius:12px!important;font-size:15px!important;
@@ -1417,7 +1448,12 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     st.markdown("""
 <nav class="lp-nav">
   <a class="lp-logo" href="#">
-    <div class="lp-logo-dot"></div>
+    <div class="vira-icon-box" style="width:30px;height:30px;border-radius:9px;">
+      <svg width="20" height="20" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 22 L10 22 L14 11 L22 33 L30 5 L34 22 L42 22"
+              stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
     <span class="lp-logo-text">VIRA</span>
   </a>
   <div class="lp-nav-links">
@@ -1434,6 +1470,14 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     st.markdown("""
 <div class="lp-wrap">
   <div class="lp-hero">
+    <div class="vira-icon-box" style="width:68px;height:68px;border-radius:20px;
+         margin:0 auto 24px;box-shadow:0 12px 48px rgba(129,140,248,.35);">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 22 L10 22 L14 11 L22 33 L30 5 L34 22 L42 22"
+              stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="30" cy="5" r="2.8" fill="rgba(255,255,255,0.6)"/>
+      </svg>
+    </div>
     <div class="lp-badge">
       <div class="lp-badge-dot"></div>
       多模态 &nbsp;·&nbsp; RAG 知识库 &nbsp;·&nbsp; 4 个 AI 智能体协同
@@ -1486,8 +1530,42 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
   </div>
 </div>
 
+<!-- ── 特性亮点 ── -->
+<div class="lp-wrap">
+  <div class="lp-feats">
+    <div class="lp-feat-card">
+      <div class="lp-feat-ico">⚡</div>
+      <div>
+        <div class="lp-feat-title">省 60 倍时间</div>
+        <div class="lp-feat-body">25 秒出完整竞品报告，告别半天人工反复刷视频的低效循环。</div>
+      </div>
+    </div>
+    <div class="lp-feat-card">
+      <div class="lp-feat-ico">💰</div>
+      <div>
+        <div class="lp-feat-title">降低竞品分析成本</div>
+        <div class="lp-feat-body">每份报告节省 4+ 小时人力，单月 ROI 超过订阅费用 10 倍。</div>
+      </div>
+    </div>
+    <div class="lp-feat-card">
+      <div class="lp-feat-ico">🎯</div>
+      <div>
+        <div class="lp-feat-title">改版有数据背书</div>
+        <div class="lp-feat-body">量化预测完播率提升幅度，每条改版建议都有百分比数字支撑。</div>
+      </div>
+    </div>
+    <div class="lp-feat-card">
+      <div class="lp-feat-ico">🛡️</div>
+      <div>
+        <div class="lp-feat-title">发布零风险</div>
+        <div class="lp-feat-body">合规词库实时扫描，极限词 / 违规声称自动标注，避免投放白费。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Demo 产品预览窗口 -->
-<div class="lp-wrap" style="margin-top:56px;">
+<div class="lp-wrap" style="margin-top:0px;">
   <div class="lp-demo-wrap">
     <div class="lp-demo-win">
       <div class="lp-demo-bar">
