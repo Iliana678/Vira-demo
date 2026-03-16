@@ -1566,12 +1566,12 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     </div>
     <div class="lp-badge">
       <div class="lp-badge-dot"></div>
-      多模态 &nbsp;·&nbsp; RAG 知识库 &nbsp;·&nbsp; 4 个 AI 智能体协同
+      AI &nbsp;·&nbsp; 品牌知识库 &nbsp;·&nbsp; 30s 脚本生成
     </div>
-    <div class="lp-h1">上传竞品视频<br><span class="grad">30 秒知道为什么它爆</span></div>
+    <div class="lp-h1">上传竞品视频<br><span class="grad">30 秒生成你的下一条脚本</span></div>
     <div class="lp-sub">
-      不是让 AI 帮你<strong>写内容</strong>——<br>
-      而是真正看懂竞品，告诉你爆款密码在哪，<strong>你的版本怎么改</strong>。
+      VIRA 是面向 MCN 和品牌运营的 <strong>AI 内容生成工具</strong>。<br>
+      输入竞品 + 你的品牌，直接输出<strong>达人可用的拍摄脚本</strong>。
     </div>
 
     <!-- 报告预览 Mockup -->
@@ -1634,13 +1634,13 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     st.markdown('<div class="lp-btn-row">', unsafe_allow_html=True)
     _, _hc, _ = st.columns([1, 1.4, 1])
     with _hc:
-        if st.button("✦  免费开始 · 赠 5 份报告", type="primary",
+        if st.button("✦  免费生成我的第一条脚本", type="primary",
                      use_container_width=True, key="land_cta_main"):
             st.session_state.landing_passed = True
             st.session_state.auth_mode = "signup"
             st.rerun()
         st.markdown(
-            '<div class="lp-cta-hint">注册即赠 5 份完整竞品分析报告，无需信用卡</div>',
+            '<div class="lp-cta-hint">注册即赠 5 份完整脚本生成额度，无需信用卡</div>',
             unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1869,8 +1869,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       <div class="lp-ag-ico">👁️</div>
       <div class="lp-ag-name" style="color:#A5B4FC;">获得 Hook 类型评分<br>+ 情绪基调分析</div>
       <div class="lp-ag-role">逐帧分析，比人眼更精准</div>
-      <div class="lp-ag-desc">你将看到：前 3 秒 Hook 属于哪种类型、当前情绪基调分值、
-与爆款视频的差距在哪里。</div>
+      <div class="lp-ag-desc">分析竞品 Hook 类型、情绪基调、关键视觉元素，给出量化评分。</div>
       <div class="lp-ag-chips">
         <span class="lp-ag-chip">Hook 类型识别</span>
         <span class="lp-ag-chip">色彩情绪分析</span>
@@ -1882,8 +1881,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       <div class="lp-ag-ico">✍️</div>
       <div class="lp-ag-name" style="color:#F9A8D4;">获得 3 套可直接使用<br>的商业脚本</div>
       <div class="lp-ag-role">结合品牌知识库定制</div>
-      <div class="lp-ag-desc">你将收到：3 套针对你品类定制的 Hook + 脚本 + CTA 完整文案，
-可直接复制使用。</div>
+      <div class="lp-ag-desc">结合你的品牌，生成 3 套可直接发给达人的拍摄脚本。</div>
       <div class="lp-ag-chips">
         <span class="lp-ag-chip">脚本生成</span>
         <span class="lp-ag-chip">Hook 优化</span>
@@ -1895,8 +1893,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       <div class="lp-ag-ico">🛡️</div>
       <div class="lp-ag-name" style="color:#FCA5A5;">通过抖音 / TikTok<br>违规风险扫描</div>
       <div class="lp-ag-role">发布前最后一道防线</div>
-      <div class="lp-ag-desc">你将知道：哪些词触发平台风控、风险级别评分，以及
-具体替换建议——在投放前修改，不在封号后后悔。</div>
+      <div class="lp-ag-desc">扫描抖音 / TikTok 违规风险，极限词一键标红，给出替换建议。</div>
       <div class="lp-ag-chips">
         <span class="lp-ag-chip">违规词检测</span>
         <span class="lp-ag-chip">风险分级</span>
@@ -1911,8 +1908,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       <div class="lp-ag-name" style="color:#E9D5FF;">获得 A/B 发布方案<br>+ 最终决策建议</div>
       <div class="lp-ag-role" style="margin-bottom:10px;">读取 A+B+C 全部结果，输出最终判决</div>
       <div class="lp-ag-desc" style="font-size:13px;color:rgba(255,255,255,.52);line-height:1.65;">
-        综合三路 Agent 分析，给出 S/A/B/C/D 综合评级 + 两套 A/B 发布方案对比，
-        以及「发还是不发」「改什么」「什么时候发」的完整决策建议。</div>
+        给出 A/B 发布方案 + 置信度评分 + 最终建议，一句话告诉你「发还是改、改哪里」。</div>
       <div style="margin-top:14px;">
         <a class="lp-case-link" href="[案例页URL]" target="_blank">
           📄 查看真实分析案例 →
@@ -2058,7 +2054,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       爆款侦察兵</span>
   </div>
   <div style="font-size:12px;color:rgba(255,255,255,.2);">
-    © 2026 VIRA &nbsp;·&nbsp; Powered by GPT-4o &nbsp;·&nbsp; Multi-Agent + RAG
+    © 2026 VIRA &nbsp;·&nbsp; 注册即获 5 份免费脚本生成额度 &nbsp;·&nbsp; Multi-Agent + RAG
   </div>
 </div>
 """, unsafe_allow_html=True)
