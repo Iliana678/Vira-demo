@@ -989,7 +989,8 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
   <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 18px;
               background:linear-gradient(135deg,#6366F1 0%,#A855F7 100%);
               display:inline-flex;align-items:center;justify-content:center;
-              font-size:30px;animation:vira-logo-pulse 3s ease-in-out infinite;">✦</div>
+              font-size:22px;font-weight:900;font-family:'Plus Jakarta Sans',sans-serif;
+              letter-spacing:-.04em;animation:vira-logo-pulse 3s ease-in-out infinite;">V</div>
   <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;
               font-weight:800;color:#1E1B4B;margin-bottom:6px;letter-spacing:-.02em;">
     {title}</div>
@@ -1124,13 +1125,40 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── 页脚 ──────────────────────────────────────────────────────────────────
-    st.markdown("""
-<div style="text-align:center;margin-top:24px;font-size:11px;color:#9CA3AF;
-            padding-bottom:40px;letter-spacing:.02em;">
-  注册即代表同意 VIRA 使用条款与隐私政策
-</div>
-""", unsafe_allow_html=True)
+    # ── 页脚 + 隐私政策 ────────────────────────────────────────────────────────
+    _, _pp_mid, _ = st.columns([1, 2, 1])
+    with _pp_mid:
+        with st.expander("📄 隐私政策 & 使用条款", expanded=False):
+            st.markdown("""
+**VIRA 隐私政策**（最后更新：2026 年 3 月）
+
+**我们收集哪些信息**
+- 注册时填写的邮箱地址和昵称
+- 使用记录（分析次数、日期），用于额度管理
+- 你上传的图片/视频仅在分析期间临时处理，不永久存储
+
+**如何使用这些信息**
+- 提供账户服务和额度管理
+- 偶尔发送产品更新通知（仅限注册邮箱）
+- 不用于广告投放，不向任何第三方出售
+
+**数据安全**
+- 密码经过 PBKDF2-SHA256 加盐哈希后存储，明文不保留
+- API 密钥仅保存在服务器环境变量中，不记录在任何日志
+
+**你的权利**
+- 可随时通过 support@vira.ai 申请删除账户和所有数据
+
+**联系我们**：support@vira.ai
+
+---
+*使用 VIRA 即表示你已阅读并同意本政策。*
+""")
+    st.markdown(
+        "<div style='text-align:center;margin-top:8px;font-size:11px;color:#9CA3AF;"
+        "padding-bottom:40px;'>© 2026 VIRA · 保留所有权利</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ── 产品落地页 ────────────────────────────────────────────────────────────────
@@ -1195,7 +1223,7 @@ def _render_landing_page() -> None:
 </div>
 <div class="vl-wrap">
   <div class="vl-hero">
-    <div class="vl-logo">✦</div>
+    <div class="vl-logo" style="font-size:28px;font-weight:900;font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:-.04em;color:#fff;">V</div>
     <div class="vl-badge">AI · MULTI-AGENT · 30s REPORT</div>
     <div class="vl-h1">上传竞品截图<br><span>30 秒知道为什么它爆</span></div>
     <div class="vl-sub">VIRA 是面向内容创作者和电商运营的 AI 竞品分析工具。<br>
@@ -1260,7 +1288,7 @@ def _render_landing_page() -> None:
       <div><div class="vl-agent-name">策略执行官</div><div class="vl-agent-desc">汇总三路输出，给出置信度评分 + A/B Test 方案 + 最终裁决</div></div>
     </div>
   </div>
-  <div class="vl-footer">© 2026 VIRA · 注册即获 5 份免费竞品报告</div>
+  <div class="vl-footer">© 2026 VIRA · 保留所有权利 · 注册即获 5 份免费竞品报告</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1962,7 +1990,7 @@ if not st.session_state.workflow_result:
       <div class="agid" style="color:var(--bl)">
         <div class="agdot" style="background:var(--bl)"></div>AGENT 4 · 综合汇总
       </div>
-      <span class="agico">✦</span>
+      <span class="agico" style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;font-size:.85em;letter-spacing:-.02em;">V</span>
       <div class="agname">策略执行官</div>
       <div class="agsub" style="color:var(--t1)">读取 A1+A2+A3 全部结果，输出最终战略裁决</div>
       <div class="agdesc">综合三个专家Agent的分析，给出成功置信度评分（0-100）、A/B Test 实验方案设计，以及前3秒改法、视觉升级点、文案优化方向的完整改版指令。</div>
@@ -3206,7 +3234,7 @@ if st.session_state.get("cs_open", False):
         <div style="width:36px;height:36px;border-radius:50%;
                     background:rgba(255,255,255,.2);
                     display:flex;align-items:center;justify-content:center;
-                    font-size:18px;">✦</div>
+                    font-size:15px;font-weight:900;font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:-.02em;color:#fff;">V</div>
         <div>
           <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;
                       font-weight:800;color:#fff;">VIRA Assistant</div>
@@ -3232,7 +3260,7 @@ if st.session_state.get("cs_open", False):
     if not cs_history:
         cs_history = [{
             "role": "assistant",
-            "content": "你好！我是 VIRA 客服助理 ✦\n\n有任何关于使用 VIRA、功能介绍或遇到问题，直接告诉我～"
+            "content": "你好！我是 VIRA 客服助理 ✌\n\n有任何关于使用 VIRA、功能介绍或遇到问题，直接告诉我～"
         }]
         st.session_state.cs_history = cs_history
 
