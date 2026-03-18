@@ -32,6 +32,35 @@ from PIL import Image
 load_dotenv()
 
 
+# ── API Key 统一读取函数 ───────────────────────────────────────────────────────
+def get_api_key() -> str:
+    """
+    优先级：
+    1. Streamlit Cloud Secrets → [openai] api_key（生产环境）
+    2. 本地 .env / 系统环境变量 OPENAI_API_KEY（开发环境）
+    3. session_state.api_key（用户手动输入，兜底）
+    """
+    try:
+        if hasattr(st, "secrets") and "openai" in st.secrets:
+            return st.secrets["openai"]["api_key"]
+    except Exception:
+        pass
+    env_key = os.getenv("OPENAI_API_KEY", "")
+    if env_key:
+        return env_key
+    return st.session_state.get("api_key", "")
+
+
+def _api_key_from_backend() -> bool:
+    """返回 True 表示 key 来自后端（Secrets / 环境变量），无需用户输入。"""
+    try:
+        if hasattr(st, "secrets") and "openai" in st.secrets:
+            return bool(st.secrets["openai"].get("api_key", ""))
+    except Exception:
+        pass
+    return bool(os.getenv("OPENAI_API_KEY", ""))
+
+
 # ── 安全日志过滤：防止 API Key 意外出现在日志中 ──────────────────────────────
 class _SensitiveFilter(logging.Filter):
     """把所有日志里的 sk-... 替换为 [REDACTED]，防止 key 泄漏到日志"""
@@ -159,16 +188,18 @@ body, .stApp {
     33%     { background-position: 8% 4%,  92%  88%,  55% 45%; }
     66%     { background-position: 3% 8%,  97%  95%,  48% 54%; }
 }
+html, body,
 .stApp,
+#root,
+[data-testid="stApp"],
 [data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-body {
-    background-color: #080C1E !important;
+[data-testid="stMain"] {
+    background-color: #F0EDFF !important;
     background-image:
-        radial-gradient(ellipse 70% 60% at 8%   6%,  rgba(168,85,247,.22)  0%, transparent 65%),
-        radial-gradient(ellipse 60% 55% at 94%  92%, rgba(99,102,241,.20)  0%, transparent 65%),
-        radial-gradient(ellipse 55% 45% at 52%  80%, rgba(56,189,248,.08)  0%, transparent 60%),
-        radial-gradient(ellipse 40% 35% at 50%  50%, rgba(139,92,246,.06)  0%, transparent 55%) !important;
+        radial-gradient(ellipse 80% 60% at 5%   8%,  rgba(167,139,250,.30) 0%, transparent 60%),
+        radial-gradient(ellipse 65% 55% at 96%  94%, rgba(139,92,246,.22)  0%, transparent 62%),
+        radial-gradient(ellipse 55% 45% at 75%  15%, rgba(196,181,253,.28) 0%, transparent 56%),
+        radial-gradient(ellipse 40% 35% at 50%  50%, rgba(221,214,254,.15) 0%, transparent 52%) !important;
     background-size: 200% 200% !important;
     animation: vira-bg-shift 18s ease-in-out infinite !important;
     color: var(--t0) !important;
@@ -546,6 +577,134 @@ section[data-testid="stMain"] {
 .risk-medium { color: var(--go); font-weight: 700; }
 .risk-high   { color: var(--re); font-weight: 700; }
 
+/* ── 品牌知识库 UI ──────────────────────────────────────────────────────── */
+.bkb-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(8,12,30,.88);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+}
+.bkb-modal {
+    background: #0E1228;
+    border: 1px solid rgba(99,102,241,.35);
+    border-radius: 20px;
+    padding: 36px 40px;
+    width: min(540px, 96vw);
+    box-shadow: 0 32px 80px rgba(0,0,0,.6);
+    position: relative;
+}
+.bkb-title {
+    font-size: 1.25rem; font-weight: 700; color: #E2E8F0;
+    margin: 0 0 4px;
+}
+.bkb-sub {
+    font-size: 0.82rem; color: #6B7280; margin: 0 0 24px;
+}
+.bkb-step-bar {
+    display: flex; gap: 6px; margin-bottom: 28px;
+}
+.bkb-step-dot {
+    height: 4px; border-radius: 99px; flex: 1;
+    background: rgba(99,102,241,.2);
+    transition: background .3s;
+}
+.bkb-step-dot.active { background: #6366F1; }
+.bkb-tone-grid {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;
+}
+.bkb-tone-badge {
+    padding: 5px 14px; border-radius: 99px; cursor: pointer;
+    font-size: 0.78rem; border: 1px solid rgba(99,102,241,.3);
+    background: transparent; color: #94A3B8;
+    transition: all .2s;
+}
+.bkb-tone-badge.sel {
+    background: rgba(99,102,241,.25); color: #818CF8;
+    border-color: #6366F1;
+}
+.bkb-brand-bar {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(99,102,241,.08);
+    border: 1px solid rgba(99,102,241,.18);
+    border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 16px;
+    font-size: 0.82rem;
+}
+.bkb-brand-bar .brand-label { color: #818CF8; font-weight: 600; }
+.bkb-brand-bar .brand-detail { color: #94A3B8; }
+.bkb-brand-bar .brand-edit-link {
+    margin-left: auto; color: #6366F1; cursor: pointer;
+    font-size: 0.78rem; text-decoration: underline; white-space: nowrap;
+}
+
+/* 脚本展开卡片 */
+.script-expand-card {
+    background: rgba(99,102,241,.06);
+    border: 1px solid rgba(99,102,241,.2);
+    border-radius: 12px; margin-bottom: 12px; overflow: hidden;
+}
+.script-expand-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; cursor: pointer;
+    font-size: 0.88rem; font-weight: 600; color: #C7D2FE;
+}
+.script-expand-body {
+    padding: 0 18px 16px; border-top: 1px solid rgba(99,102,241,.15);
+}
+.scene-row {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+    font-size: 0.8rem;
+}
+.scene-no {
+    min-width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(99,102,241,.3); color: #818CF8;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+}
+.scene-desc { color: #94A3B8; flex: 1; }
+.scene-dial { color: #E2E8F0; flex: 1; }
+
+/* ── 上传区 Tab 样式 ────────────────────────────────────────────────────── */
+/* 视频 tab：右上角 badge */
+.upload-tab-coming {
+    display: inline-flex; align-items: center; gap: 6px;
+}
+.upload-tab-coming .coming-badge {
+    font-size: 9px; padding: 1px 6px; border-radius: 99px;
+    background: rgba(251,191,36,.18); color: #FCD34D;
+    border: 1px solid rgba(251,191,36,.3); letter-spacing: .04em;
+    font-family: 'DM Mono', monospace;
+}
+/* 上传区：拖拽框 */
+.upload-drop-hint {
+    border: 2px dashed rgba(99,102,241,.3);
+    border-radius: 14px; padding: 36px 20px;
+    text-align: center; background: rgba(99,102,241,.04);
+    color: #6B7280; font-size: .85rem; margin-bottom: 12px;
+}
+.upload-drop-hint .drop-icon { font-size: 2rem; margin-bottom: 8px; }
+.upload-drop-hint .drop-sub  { font-size: .75rem; color: #4B5563; margin-top: 4px; }
+/* 上传确认卡 */
+.upload-confirm-card {
+    background: rgba(14,18,40,.85);
+    border: 1px solid rgba(99,102,241,.25);
+    border-radius: 14px; padding: 18px 20px; margin-bottom: 16px;
+}
+/* 缩略图网格容器 */
+.upload-thumb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px; margin: 16px 0;
+}
+/* 视频候补邮箱区 */
+.video-waitlist-box {
+    background: rgba(30,30,50,.6);
+    border: 1px solid rgba(251,191,36,.2);
+    border-radius: 14px; padding: 28px 24px; text-align: center;
+    margin-top: 20px;
+}
+
 /* ── 脚本卡片：蓝色左边界 ───────────────────────────────────────────────── */
 .script-card {
     background: rgba(99,102,241,.05);
@@ -786,12 +945,266 @@ def _init_state() -> None:
         "transcript_filename": "",
         # ── 模板库 ────────────────────────────────────────────
         "template_applied":    "",   # 当前应用的模板名
+        # ── 品牌知识库 ────────────────────────────────────────
+        "brand_kb_mode":       "",   # "" | "onboard" | "edit" | "switch"
+        "brand_kb_step":       1,    # 1=基本信息  2=内容风格
+        "brand_profile":       None, # 当前激活的品牌 profile dict
+        "brand_kb_loaded":     False, # 是否已从 DB 载入过
+        # ── 上传管理 ──────────────────────────────────────────
+        "upload_platform_map": {},   # {filename: platform}
+        "upload_excluded":     set(), # 软删除的文件名集合
+        "video_waitlist_email":"",   # 视频功能候补邮箱
+        # ── Agent E 趋势提炼师 ────────────────────────────────────
+        "all_results":         [],   # 历次 workflow result 列表（最近10次）
+        "analysis_count":      0,    # 累计成功分析次数
+        "trend_result":        None, # 最新趋势分析结果
+        # ── 链接解析 ──────────────────────────────────────────────
+        "parsed_data":         {},   # parse_video_url 返回结果
+        "video_url":           "",   # 用户输入的视频链接
+        "url_platform":        "抖音",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 _init_state()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 品牌知识库模块
+# ══════════════════════════════════════════════════════════════════════════════
+
+TONE_OPTIONS    = ["活泼", "专业", "温暖", "高端", "接地气", "搞笑"]
+CATEGORY_OPTIONS = ["美妆 / 个护", "食品 / 饮料", "3C / 数码", "服装 / 配饰", "家居 / 生活", "其他"]
+COLLAB_OPTIONS  = ["剧情植入", "直接测评", "教程类", "开箱类"]
+
+
+def _load_brand_profile_if_needed() -> None:
+    """首次渲染时从数据库读取激活品牌，写入 session_state。"""
+    if st.session_state.get("brand_kb_loaded"):
+        return
+    email = (st.session_state.get("user_info") or {}).get("email", "")
+    if not email:
+        return
+    from services.brand_kb import get_active_brand
+    st.session_state.brand_profile  = get_active_brand(email)
+    st.session_state.brand_kb_loaded = True
+
+
+def _render_brand_kb_form() -> bool:
+    """
+    渲染品牌知识库填写/编辑表单（两屏）。
+    返回 True 表示用户已完成或跳过，调用方应 st.rerun()。
+    """
+    from services.brand_kb import (
+        get_brand_profiles, save_brand_profile,
+        set_active_brand, delete_brand_profile,
+    )
+
+    mode  = st.session_state.brand_kb_mode   # "onboard" | "edit" | "switch"
+    step  = st.session_state.brand_kb_step   # 1 | 2
+    email = (st.session_state.get("user_info") or {}).get("email", "")
+
+    is_edit   = (mode == "edit")
+    edit_prof = st.session_state.brand_profile if is_edit else {}
+
+    # ── 品牌切换面板 ────────────────────────────────────────────────────────
+    if mode == "switch":
+        profiles = get_brand_profiles(email)
+        st.markdown("### 🔀 切换品牌")
+        if not profiles:
+            st.info("暂无品牌 Profile，请先创建一个。")
+        else:
+            for p in profiles:
+                c1, c2, c3 = st.columns([5, 1, 1])
+                c1.markdown(
+                    f"{'🟢 ' if p['is_active'] else '　'}"
+                    f"**{p['brand_name'] or '未命名'}** · {p['category'] or '—'}"
+                )
+                if not p["is_active"]:
+                    if c2.button("激活", key=f"act_{p['id']}"):
+                        set_active_brand(email, p["id"])
+                        st.session_state.brand_profile  = p
+                        st.session_state.brand_kb_mode  = ""
+                        st.rerun()
+                if c3.button("删除", key=f"del_{p['id']}"):
+                    delete_brand_profile(email, p["id"])
+                    st.session_state.brand_profile  = get_brand_profiles(email)[0] if get_brand_profiles(email) else None
+                    st.session_state.brand_kb_mode  = ""
+                    st.rerun()
+        c_new, c_cancel = st.columns(2)
+        if c_new.button("＋ 新建品牌", use_container_width=True):
+            st.session_state.brand_kb_mode = "onboard"
+            st.session_state.brand_kb_step = 1
+            st.rerun()
+        if c_cancel.button("取消", use_container_width=True):
+            st.session_state.brand_kb_mode = ""
+            st.rerun()
+        return False
+
+    # ── 进度条 HTML ──────────────────────────────────────────────────────────
+    bar_html = (
+        '<div class="bkb-step-bar">'
+        + "".join(
+            f'<div class="bkb-step-dot{"  active" if i < step else ""}"></div>'
+            for i in range(1, 3)
+        )
+        + "</div>"
+    )
+
+    title_text = "编辑品牌知识库" if is_edit else "完善品牌知识库，生成专属脚本"
+    sub_text   = (
+        "更新你的品牌信息，下次分析自动生效"
+        if is_edit else
+        "填写后，转化精算师将生成完全符合你品牌的拍摄脚本 · 可随时修改"
+    )
+
+    st.markdown(f"<p class='bkb-title'>{title_text}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='bkb-sub'>{sub_text}</p>", unsafe_allow_html=True)
+    st.markdown(bar_html, unsafe_allow_html=True)
+
+    # ══════════════════ 第一屏：基本信息 ════════════════════════════════════
+    if step == 1:
+        st.markdown("**第 1 屏 / 2 · 基本信息**")
+        with st.form("bkb_step1"):
+            brand_name = st.text_input(
+                "品牌名称 *",
+                value=edit_prof.get("brand_name", ""),
+                placeholder="例：光感防晒",
+            )
+            category = st.selectbox(
+                "主营品类 *",
+                CATEGORY_OPTIONS,
+                index=CATEGORY_OPTIONS.index(edit_prof["category"])
+                      if edit_prof.get("category") in CATEGORY_OPTIONS else 0,
+            )
+            core_sku = st.text_input(
+                "核心 SKU",
+                value=edit_prof.get("core_sku", ""),
+                placeholder="例：SPF50+ 防晒霜，主打学生党",
+            )
+            target_audience = st.text_input(
+                "目标人群",
+                value=edit_prof.get("target_audience", ""),
+                placeholder="例：18-25 岁女性，预算敏感",
+            )
+            c_next, c_skip = st.columns([3, 1])
+            next_clicked = c_next.form_submit_button("下一步 →", use_container_width=True, type="primary")
+            skip_clicked = c_skip.form_submit_button("暂时跳过", use_container_width=True)
+
+        if next_clicked:
+            if not brand_name.strip():
+                st.error("请填写品牌名称")
+                return False
+            st.session_state["_bkb_s1"] = {
+                "brand_name": brand_name.strip(),
+                "category": category,
+                "core_sku": core_sku.strip(),
+                "target_audience": target_audience.strip(),
+            }
+            st.session_state.brand_kb_step = 2
+            st.rerun()
+
+        if skip_clicked:
+            st.session_state.brand_kb_mode = ""
+            st.session_state.brand_kb_step = 1
+            return True
+
+    # ══════════════════ 第二屏：内容风格 ════════════════════════════════════
+    elif step == 2:
+        st.markdown("**第 2 屏 / 2 · 内容风格**")
+
+        # 调性多选：用 checkbox 模拟 badge
+        st.markdown("**品牌调性**（可多选）")
+        saved_tone = edit_prof.get("tone") or st.session_state.get("_bkb_s1", {}).get("tone", [])
+        tone_selected: list[str] = []
+        cols = st.columns(3)
+        for i, opt in enumerate(TONE_OPTIONS):
+            default = opt in saved_tone
+            if cols[i % 3].checkbox(opt, value=default, key=f"tone_{opt}"):
+                tone_selected.append(opt)
+
+        _PLATFORM_OPTIONS = ["抖音", "小红书", "视频号", "TikTok", "快手"]
+        _saved_platforms = (
+            edit_prof.get("target_platforms")
+            or st.session_state.get("_bkb_s1", {}).get("target_platforms")
+            or ["抖音"]
+        )
+        with st.form("bkb_step2"):
+            forbidden_raw = st.text_input(
+                "禁用词 / 敏感词",
+                value=", ".join(edit_prof.get("forbidden_words") or []),
+                placeholder="例：最便宜, 第一，逗号分隔",
+            )
+            hit_keywords_raw = st.text_input(
+                "过往爆款关键词（选填）",
+                value=", ".join(edit_prof.get("hit_keywords") or []),
+                placeholder="例：防晒黑, 平价好物",
+            )
+            target_platforms = st.multiselect(
+                "目标发布平台",
+                options=_PLATFORM_OPTIONS,
+                default=[p for p in _saved_platforms if p in _PLATFORM_OPTIONS],
+                help="选择后，脚本会针对每个平台输出不同风格版本",
+            )
+            st.caption("不同平台节奏和风格完全不同，选多平台后会输出对应版本")
+            collab_style = st.selectbox(
+                "达人合作风格",
+                COLLAB_OPTIONS,
+                index=COLLAB_OPTIONS.index(edit_prof["collab_style"])
+                      if edit_prof.get("collab_style") in COLLAB_OPTIONS else 0,
+            )
+            profile_name = st.text_input(
+                "此 Profile 名称",
+                value=edit_prof.get("profile_name", "默认品牌"),
+                placeholder="例：主推款防晒",
+            )
+
+            c_save, c_back = st.columns([3, 1])
+            save_clicked = c_save.form_submit_button(
+                "保存品牌知识库，开始分析", use_container_width=True, type="primary"
+            )
+            back_clicked = c_back.form_submit_button("← 返回", use_container_width=True)
+
+        if back_clicked:
+            st.session_state.brand_kb_step = 1
+            st.rerun()
+
+        if save_clicked:
+            s1 = st.session_state.get("_bkb_s1") or {}
+            if is_edit:
+                s1 = {
+                    "brand_name":      edit_prof.get("brand_name", ""),
+                    "category":        edit_prof.get("category", ""),
+                    "core_sku":        edit_prof.get("core_sku", ""),
+                    "target_audience": edit_prof.get("target_audience", ""),
+                }
+            data = {
+                **s1,
+                "profile_name":     profile_name.strip() or "默认品牌",
+                "tone":             tone_selected,
+                "forbidden_words":  [w.strip() for w in forbidden_raw.split(",") if w.strip()],
+                "hit_keywords":     [w.strip() for w in hit_keywords_raw.split(",") if w.strip()],
+                "collab_style":     collab_style,
+                "target_platforms": target_platforms,
+            }
+            profile_id_to_update = edit_prof.get("id") if is_edit else None
+            ok, msg, pid = save_brand_profile(email, data, profile_id=profile_id_to_update)
+            if ok:
+                if not is_edit:
+                    from services.brand_kb import set_active_brand as _sab
+                    _sab(email, pid)
+                from services.brand_kb import get_active_brand
+                st.session_state.brand_profile  = get_active_brand(email)
+                st.session_state.brand_kb_mode  = ""
+                st.session_state.brand_kb_step  = 1
+                st.session_state["_bkb_s1"]     = {}
+                st.success(msg)
+                return True
+            else:
+                st.error(msg)
+
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1176,348 +1589,389 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
 def _render_landing_page() -> None:
     # ── 全局 CSS ─────────────────────────────────────────────────────────────
     st.markdown("""<style>
-/* 隐藏 Streamlit 框架 chrome */
+/* ── 隐藏 Streamlit 框架 chrome ─────────────────────────────────────────── */
 [data-testid="stSidebar"],[data-testid="stSidebarNav"],
 [data-testid="stHeader"],#MainMenu,footer,.stDeployButton{display:none!important;}
 [data-testid="stMainBlockContainer"]{max-width:100%!important;padding:0!important;}
 [data-testid="stMain"]{padding:0!important;}
 .block-container{padding:0!important;max-width:100%!important;}
-.stApp,[data-testid="stAppViewContainer"],body{
-  background:#08090F!important;background-image:none!important;}
 
-/* 动画 */
+/* ── 多色光晕浅紫背景（静态 CSS 兜底，canvas 动效叠加在上方）──────── */
+html,body,
+.stApp,
+#root,
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main .block-container {
+  background-color: #F0EEFF !important;
+  background-image:
+    radial-gradient(ellipse 70% 60% at 8%  6%,  rgba(168,130,255,.35) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 50% at 92% 88%, rgba(240,150,200,.28) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 45% at 85% 10%, rgba(180,160,255,.20) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 15% 90%, rgba(150,130,255,.18) 0%, transparent 50%) !important;
+  background-attachment: fixed !important;
+  color:#1a1a2e !important;
+}
+
+/* ── canvas 全屏漂浮光斑层 ──────────────────────────────────────────── */
+#vira-bg-canvas{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  z-index:0;pointer-events:none;}
+
+/* ── 动效开关按钮 ────────────────────────────────────────────────────── */
+#vira-anim-toggle{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(8px);
+  border:1px solid rgba(83,74,183,.20);border-radius:8px;
+  padding:6px 12px;font-size:12px;font-weight:600;color:#534AB7;
+  cursor:pointer;transition:background .15s,border-color .15s;margin-left:8px;}
+#vira-anim-toggle:hover{background:rgba(255,255,255,.80);border-color:rgba(83,74,183,.35);}
+
+/* ── 动画 ───────────────────────────────────────────────────────────────── */
 @keyframes lp-fade-up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
 @keyframes lp-fade-in{from{opacity:0}to{opacity:1}}
 @keyframes lp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.75)}}
-@keyframes lp-glow{0%,100%{box-shadow:0 0 20px rgba(99,102,241,.4)}
-                   50%{box-shadow:0 0 44px rgba(168,85,247,.65)}}
+@keyframes lp-glow{0%,100%{box-shadow:0 0 20px rgba(99,102,241,.25)}
+                   50%{box-shadow:0 0 36px rgba(99,102,241,.45)}}
 @keyframes lp-bar{from{width:0%}to{width:72%}}
 @keyframes lp-ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
-/* 导航栏 */
+/* ── 导航栏 ─────────────────────────────────────────────────────────────── */
 .lp-nav{position:fixed;top:0;left:0;right:0;z-index:9999;
   height:58px;display:flex;align-items:center;justify-content:space-between;
   padding:0 48px;
-  background:rgba(8,9,15,.88);backdrop-filter:blur(20px);
-  border-bottom:1px solid rgba(255,255,255,.06);}
+  background:rgba(255,255,255,.80);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(99,102,241,.10);}
 .lp-logo{display:flex;align-items:center;gap:9px;text-decoration:none;}
 .lp-logo-dot{width:10px;height:10px;border-radius:50%;
-  background:linear-gradient(135deg,#6366F1,#A855F7);
+  background:linear-gradient(135deg,#534AB7,#7C3AED);
   animation:lp-pulse 2.2s ease-in-out infinite;flex-shrink:0;}
 .lp-logo-text{font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;
-  font-weight:900;color:#fff;letter-spacing:-.01em;}
+  font-weight:900;color:#1a1a2e;letter-spacing:-.01em;}
 .lp-nav-links{display:flex;gap:28px;}
-.lp-nav-link{font-size:13px;color:rgba(255,255,255,.55);text-decoration:none;
+.lp-nav-link{font-size:13px;color:#6B7280;text-decoration:none;
   transition:color .15s;cursor:pointer;}
-.lp-nav-link:hover{color:#fff;}
-.lp-nav-cta{background:linear-gradient(135deg,#6366F1,#A855F7);color:#fff!important;
+.lp-nav-link:hover{color:#1a1a2e;}
+.lp-nav-cta{background:#534AB7;color:#fff!important;
   font-size:13px;font-weight:700;padding:8px 20px;border-radius:8px;
   text-decoration:none;cursor:pointer;
-  box-shadow:0 4px 18px rgba(99,102,241,.35);transition:transform .12s;}
-.lp-nav-cta:hover{transform:translateY(-1px);}
+  box-shadow:0 4px 14px rgba(83,74,183,.30);transition:transform .12s,background .15s;}
+.lp-nav-cta:hover{background:#4338CA;transform:translateY(-1px);}
 
-/* 主容器 */
+/* ── 主容器 ─────────────────────────────────────────────────────────────── */
 .lp-wrap{max-width:1100px;margin:0 auto;padding:0 48px;}
 .lp-spacer-nav{height:58px;}
 
-/* Hero */
+/* ── Hero ───────────────────────────────────────────────────────────────── */
 .lp-hero{padding:96px 0 64px;text-align:center;
   animation:lp-fade-up .75s ease both;}
 .lp-badge{display:inline-flex;align-items:center;gap:7px;
-  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.28);
-  color:rgba(255,255,255,.65);font-size:11.5px;font-weight:600;
+  background:rgba(83,74,183,.08);border:1px solid rgba(83,74,183,.22);
+  color:#534AB7;font-size:11.5px;font-weight:600;
   padding:5px 14px;border-radius:20px;margin-bottom:26px;letter-spacing:.06em;}
 .lp-badge-dot{width:6px;height:6px;border-radius:50%;
-  background:#6366F1;animation:lp-pulse 1.8s ease-in-out infinite;}
+  background:#534AB7;animation:lp-pulse 1.8s ease-in-out infinite;}
 .lp-h1{font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:clamp(34px,5.5vw,66px);font-weight:900;color:#fff;
+  font-size:clamp(34px,5.5vw,66px);font-weight:900;color:#1a1a2e;
   line-height:1.08;letter-spacing:-.045em;margin-bottom:18px;}
-.lp-h1 .grad{background:linear-gradient(90deg,#818CF8,#C084FC,#F472B6);
+.lp-h1 .grad{
+  background:linear-gradient(90deg,#6366F1,#8B5CF6,#A855F7,#C084FC);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.lp-sub{font-size:clamp(15px,1.8vw,18px);color:rgba(255,255,255,.48);
+.lp-sub{font-size:clamp(15px,1.8vw,18px);color:#4a5568;
   line-height:1.8;max-width:580px;margin:0 auto 18px;}
-.lp-sub strong{color:rgba(255,255,255,.82);}
-.lp-sub-em{font-size:14px;color:rgba(255,255,255,.32);
+.lp-sub strong{color:#1a1a2e;}
+.lp-sub-em{font-size:14px;color:#6B7280;
   margin-bottom:38px;max-width:480px;margin-left:auto;margin-right:auto;}
 
-/* Hero CTA 区域占位 */
+/* ── Hero CTA 区域占位 ──────────────────────────────────────────────────── */
 .lp-hero-cta-ph{height:56px;}
 
-/* Stats */
-.lp-stats{display:flex;justify-content:center;gap:48px;flex-wrap:wrap;
-  margin-top:52px;padding-top:28px;
-  border-top:1px solid rgba(255,255,255,.06);}
-.lp-stat{}
-.lp-stat-num{font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:clamp(22px,2.8vw,32px);font-weight:900;color:#fff;
-  letter-spacing:-.04em;}
-.lp-stat-num em{font-style:normal;
-  background:linear-gradient(90deg,#818CF8,#C084FC);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.lp-stat-label{font-size:12px;color:rgba(255,255,255,.38);
-  margin-top:4px;text-align:center;}
+/* ── 通用卡片 ───────────────────────────────────────────────────────────── */
+.lp-card{
+  background:rgba(255,255,255,.85);
+  backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.6);
+  border-radius:16px;
+  box-shadow:0 2px 16px rgba(83,74,183,.06);
+  transition:border-color .2s,transform .2s,box-shadow .2s;}
+.lp-card:hover{
+  border-color:rgba(83,74,183,.25);
+  transform:translateY(-3px);
+  box-shadow:0 8px 28px rgba(83,74,183,.10);}
 
-/* Demo 窗口 */
-.lp-demo-wrap{padding:0 0 88px;animation:lp-fade-up .85s .15s ease both;}
-.lp-demo-win{background:#0E0F1A;border:1px solid rgba(255,255,255,.09);
-  border-radius:16px;overflow:hidden;
-  box-shadow:0 48px 128px rgba(0,0,0,.7),
-             0 0 80px rgba(99,102,241,.07),
-             inset 0 1px 0 rgba(255,255,255,.05);}
-.lp-demo-bar{display:flex;align-items:center;gap:7px;padding:11px 16px;
-  background:#090A14;border-bottom:1px solid rgba(255,255,255,.06);}
-.lp-demo-dot{width:12px;height:12px;border-radius:50%;}
-.lp-demo-title{flex:1;text-align:center;font-size:11px;
-  color:rgba(255,255,255,.28);letter-spacing:.04em;}
-.lp-demo-body{padding:20px 20px 24px;display:grid;gap:14px;}
-.lp-demo-frames{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
-.lp-frame{background:#13142A;border-radius:8px;
-  display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:20px 8px 12px;gap:8px;
-  border:1px solid rgba(255,255,255,.05);}
-.lp-frame-emoji{font-size:22px;}
-.lp-frame-tag{font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.04em;}
-.lp-demo-agents{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.lp-da{background:#13142A;border-radius:10px;padding:12px 14px;border-left:3px solid;}
-.lp-da-tag{font-size:9px;font-weight:700;letter-spacing:.1em;margin-bottom:6px;}
-.lp-da-val{font-size:13px;font-weight:800;color:#fff;}
-.lp-da-sub{font-size:11px;color:rgba(255,255,255,.38);margin-top:2px;}
-.lp-demo-summary{display:flex;align-items:center;gap:14px;
-  background:linear-gradient(90deg,rgba(99,102,241,.12),rgba(168,85,247,.08));
-  border:1px solid rgba(99,102,241,.22);border-radius:10px;padding:14px 18px;}
-.lp-ds-grade{width:42px;height:42px;border-radius:10px;flex-shrink:0;
-  background:linear-gradient(135deg,#6366F1,#A855F7);
-  display:flex;align-items:center;justify-content:center;
-  font-size:20px;font-weight:900;color:#fff;}
-.lp-ds-text{font-size:13px;color:rgba(255,255,255,.65);line-height:1.6;}
-.lp-ds-score{font-size:14px;font-weight:800;color:#fff;margin-bottom:2px;}
-
-/* ── 通用 section ── */
+/* ── 通用 section ───────────────────────────────────────────────────────── */
 .lp-section{padding:80px 0;}
-.lp-sec-tag{font-size:11px;font-weight:700;color:#6366F1;
+.lp-sec-tag{font-size:11px;font-weight:700;color:#534AB7;
   letter-spacing:.14em;margin-bottom:10px;}
 .lp-sec-h2{font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:clamp(24px,3.6vw,44px);font-weight:900;color:#fff;
+  font-size:clamp(24px,3.6vw,44px);font-weight:900;color:#1a1a2e;
   line-height:1.12;letter-spacing:-.035em;margin-bottom:10px;}
-.lp-sec-sub{font-size:15px;color:rgba(255,255,255,.42);
+.lp-sec-sub{font-size:15px;color:#6B7280;
   line-height:1.75;max-width:600px;margin-bottom:44px;}
-.lp-card{background:#0E0F1A;border:1px solid rgba(255,255,255,.07);
-  border-radius:16px;transition:border-color .2s,transform .2s;}
-.lp-card:hover{border-color:rgba(99,102,241,.3);transform:translateY(-3px);}
 
-/* Before/After */
+/* ── Before/After ───────────────────────────────────────────────────────── */
 .lp-ba-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .lp-ba-label{font-size:11px;font-weight:700;letter-spacing:.1em;
   display:flex;align-items:center;gap:8px;margin-bottom:18px;}
 .lp-ba-item{display:flex;align-items:flex-start;gap:10px;
-  padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05);
-  font-size:13px;color:rgba(255,255,255,.65);line-height:1.55;}
+  padding:9px 0;border-bottom:1px solid rgba(0,0,0,.05);
+  font-size:13px;color:#374151;line-height:1.55;}
 .lp-ba-item:last-child{border-bottom:none;}
 .lp-ba-ico{flex-shrink:0;font-size:14px;margin-top:1px;}
 
-/* 步骤 */
+/* ── 步骤卡片 ───────────────────────────────────────────────────────────── */
 .lp-steps{display:flex;flex-direction:column;gap:14px;}
 .lp-step{display:flex;gap:22px;align-items:flex-start;padding:26px 28px;}
 .lp-step-num{font-family:'Plus Jakarta Sans',sans-serif;font-size:52px;
-  font-weight:900;color:rgba(255,255,255,.05);line-height:1;
+  font-weight:900;color:rgba(83,74,183,.08);line-height:1;
   flex-shrink:0;min-width:56px;}
 .lp-step-ico{font-size:30px;flex-shrink:0;}
 .lp-step-body{}
-.lp-step-title{font-size:18px;font-weight:800;color:#fff;margin-bottom:6px;}
-.lp-step-desc{font-size:13.5px;color:rgba(255,255,255,.45);line-height:1.7;}
+.lp-step-title{font-size:18px;font-weight:800;color:#1a1a2e;margin-bottom:6px;}
+.lp-step-desc{font-size:13.5px;color:#6B7280;line-height:1.7;}
 .lp-step-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;}
-.lp-chip{font-size:11px;background:rgba(99,102,241,.1);color:#A5B4FC;
-  border:1px solid rgba(99,102,241,.2);padding:3px 11px;border-radius:20px;}
+.lp-chip{font-size:11px;background:rgba(83,74,183,.07);color:#534AB7;
+  border:1px solid rgba(83,74,183,.18);padding:3px 11px;border-radius:20px;}
 
-/* Agent 卡片 */
+/* ── Agent 卡片 ─────────────────────────────────────────────────────────── */
 .lp-ag3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;}
 .lp-ag-card{padding:22px 22px 18px;}
 .lp-ag-tag{font-size:10px;font-weight:700;letter-spacing:.1em;
   display:flex;align-items:center;gap:6px;margin-bottom:14px;}
 .lp-ag-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .lp-ag-ico{font-size:30px;margin-bottom:10px;}
-.lp-ag-name{font-size:17px;font-weight:800;color:#fff;margin-bottom:3px;}
-.lp-ag-role{font-size:12px;color:rgba(255,255,255,.35);margin-bottom:10px;}
-.lp-ag-desc{font-size:13px;color:rgba(255,255,255,.52);line-height:1.65;}
+.lp-ag-name{font-size:17px;font-weight:800;color:#1a1a2e;margin-bottom:3px;}
+.lp-ag-role{font-size:12px;color:#9CA3AF;margin-bottom:10px;}
+.lp-ag-desc{font-size:13px;color:#374151;line-height:1.65;}
 .lp-ag-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
-.lp-ag-chip{font-size:11px;background:rgba(255,255,255,.04);
-  color:rgba(255,255,255,.38);border:1px solid rgba(255,255,255,.08);
+.lp-ag-chip{font-size:11px;background:rgba(83,74,183,.06);
+  color:#534AB7;border:1px solid rgba(83,74,183,.15);
   padding:3px 10px;border-radius:20px;}
 .lp-ag-d{display:grid;grid-template-columns:1fr 1fr;gap:24px;
   padding:24px 28px;align-items:start;}
-.lp-ag-d-output{background:#090A14;border:1px solid rgba(99,102,241,.15);
+.lp-ag-d-output{background:rgba(83,74,183,.05);border:1px solid rgba(83,74,183,.15);
   border-radius:10px;padding:18px;}
-.lp-ag-d-example{font-size:11px;font-weight:700;color:#6366F1;
+.lp-ag-d-example{font-size:11px;font-weight:700;color:#534AB7;
   letter-spacing:.1em;margin-bottom:10px;}
-.lp-ag-d-score{font-size:18px;font-weight:900;color:#fff;margin-bottom:4px;}
-.lp-ag-d-grade{display:inline-block;background:linear-gradient(135deg,#6366F1,#A855F7);
+.lp-ag-d-score{font-size:18px;font-weight:900;color:#1a1a2e;margin-bottom:4px;}
+.lp-ag-d-grade{display:inline-block;background:linear-gradient(135deg,#534AB7,#7C3AED);
   color:#fff;font-size:11px;font-weight:700;padding:2px 10px;
   border-radius:6px;margin-bottom:8px;}
-.lp-ag-d-desc{font-size:12px;color:rgba(255,255,255,.45);line-height:1.65;}
+.lp-ag-d-desc{font-size:12px;color:#6B7280;line-height:1.65;}
 
-/* 用户评价 */
-.lp-reviews{display:flex;flex-direction:column;gap:14px;}
-.lp-review{padding:22px 26px;}
-.lp-stars{color:#F59E0B;font-size:14px;margin-bottom:10px;}
-.lp-rv-text{font-size:14px;color:rgba(255,255,255,.7);
-  line-height:1.8;margin-bottom:14px;}
-.lp-rv-by{display:flex;align-items:center;gap:11px;}
-.lp-rv-avatar{width:36px;height:36px;border-radius:9px;flex-shrink:0;
+/* ── Demo 窗口 ──────────────────────────────────────────────────────────── */
+.lp-demo-wrap{padding:0 0 88px;animation:lp-fade-up .85s .15s ease both;}
+.lp-demo-win{
+  background:rgba(255,255,255,.9);
+  border:1px solid rgba(83,74,183,.12);
+  border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 80px rgba(83,74,183,.10),0 2px 8px rgba(83,74,183,.06);}
+.lp-demo-bar{display:flex;align-items:center;gap:7px;padding:11px 16px;
+  background:rgba(248,247,255,.95);border-bottom:1px solid rgba(83,74,183,.08);}
+.lp-demo-dot{width:12px;height:12px;border-radius:50%;}
+.lp-demo-title{flex:1;text-align:center;font-size:11px;
+  color:#9CA3AF;letter-spacing:.04em;}
+.lp-demo-body{padding:20px 20px 24px;display:grid;gap:14px;}
+.lp-demo-frames{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.lp-frame{background:rgba(238,240,255,.7);border-radius:8px;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:20px 8px 12px;gap:8px;
+  border:1px solid rgba(83,74,183,.10);}
+.lp-frame-emoji{font-size:22px;}
+.lp-frame-tag{font-size:9px;color:#9CA3AF;letter-spacing:.04em;}
+.lp-demo-agents{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.lp-da{background:rgba(238,240,255,.6);border-radius:10px;padding:12px 14px;border-left:3px solid;}
+.lp-da-tag{font-size:9px;font-weight:700;letter-spacing:.1em;margin-bottom:6px;}
+.lp-da-val{font-size:13px;font-weight:800;color:#1a1a2e;}
+.lp-da-sub{font-size:11px;color:#9CA3AF;margin-top:2px;}
+.lp-demo-summary{display:flex;align-items:center;gap:14px;
+  background:rgba(83,74,183,.06);
+  border:1px solid rgba(83,74,183,.15);border-radius:10px;padding:14px 18px;}
+.lp-ds-grade{width:42px;height:42px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,#534AB7,#7C3AED);
   display:flex;align-items:center;justify-content:center;
-  font-size:13px;font-weight:800;color:#fff;}
-.lp-rv-name{font-size:13px;font-weight:700;color:#fff;}
-.lp-rv-role{font-size:11px;color:rgba(255,255,255,.32);}
+  font-size:20px;font-weight:900;color:#fff;}
+.lp-ds-text{font-size:13px;color:#374151;line-height:1.6;}
+.lp-ds-score{font-size:14px;font-weight:800;color:#1a1a2e;margin-bottom:2px;}
 
-/* FAQ */
+/* ── FAQ ────────────────────────────────────────────────────────────────── */
 .lp-faqs{}
-details.lp-faq{border-bottom:1px solid rgba(255,255,255,.07);padding:18px 0;}
-details.lp-faq summary{font-size:15px;font-weight:600;color:#fff;
+details.lp-faq{border-bottom:1px solid rgba(83,74,183,.10);padding:18px 0;}
+details.lp-faq summary{font-size:15px;font-weight:600;color:#1a1a2e;
   list-style:none;display:flex;justify-content:space-between;
   align-items:center;cursor:pointer;}
 details.lp-faq summary::-webkit-details-marker{display:none;}
 details.lp-faq summary::after{content:"+";font-size:20px;
-  color:rgba(255,255,255,.28);transition:transform .2s;}
+  color:#9CA3AF;transition:transform .2s;}
 details.lp-faq[open] summary::after{content:"×";}
-details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
+details.lp-faq p{font-size:13.5px;color:#6B7280;
   line-height:1.8;margin-top:10px;padding-right:28px;}
 
-/* 最终 CTA */
-.lp-final{background:#0E0F1A;border:1px solid rgba(255,255,255,.07);
+/* ── 最终 CTA ───────────────────────────────────────────────────────────── */
+.lp-final{
+  background:rgba(255,255,255,.80);
+  backdrop-filter:blur(12px);
+  border:1px solid rgba(83,74,183,.15);
   border-radius:22px;padding:72px 48px 60px;text-align:center;
-  margin:80px 0 0;position:relative;overflow:hidden;}
+  margin:80px 0 0;position:relative;overflow:hidden;
+  box-shadow:0 8px 40px rgba(83,74,183,.08);}
 .lp-final::before{content:'';position:absolute;top:-100px;left:50%;
   transform:translateX(-50%);width:500px;height:500px;
-  background:radial-gradient(circle,rgba(99,102,241,.18) 0%,transparent 65%);
+  background:radial-gradient(circle,rgba(83,74,183,.08) 0%,transparent 65%);
   pointer-events:none;}
 .lp-final-h2{font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:clamp(24px,3.8vw,42px);font-weight:900;color:#fff;
+  font-size:clamp(24px,3.8vw,42px);font-weight:900;color:#1a1a2e;
   line-height:1.12;letter-spacing:-.04em;margin-bottom:12px;}
-.lp-final-sub{font-size:15px;color:rgba(255,255,255,.42);margin-bottom:36px;}
+.lp-final-sub{font-size:15px;color:#6B7280;margin-bottom:36px;}
 
-/* CTA 占位高度 */
+/* ── CTA 占位高度 ────────────────────────────────────────────────────────── */
 .lp-cta-ph{height:52px;}
 
-/* 底部 ticker */
-.lp-ticker-wrap{overflow:hidden;border-top:1px solid rgba(255,255,255,.06);
-  border-bottom:1px solid rgba(255,255,255,.06);
-  padding:12px 0;margin:0 0 0;background:#0A0B15;}
+/* ── 底部 ticker ────────────────────────────────────────────────────────── */
+.lp-ticker-wrap{overflow:hidden;
+  border-top:1px solid rgba(83,74,183,.10);
+  border-bottom:1px solid rgba(83,74,183,.10);
+  padding:12px 0;background:rgba(255,255,255,.6);}
 .lp-ticker{display:flex;gap:48px;width:max-content;
   animation:lp-ticker 20s linear infinite;}
-.lp-ticker-item{font-size:12px;color:rgba(255,255,255,.25);
+.lp-ticker-item{font-size:12px;color:#9CA3AF;
   white-space:nowrap;letter-spacing:.06em;display:flex;align-items:center;gap:10px;}
-.lp-ticker-sep{color:rgba(99,102,241,.4);}
+.lp-ticker-sep{color:rgba(83,74,183,.4);}
 
-/* 页脚 */
+/* ── 页脚 ───────────────────────────────────────────────────────────────── */
 .lp-footer{padding:28px 48px;display:flex;justify-content:space-between;
   align-items:center;max-width:1100px;margin:0 auto;}
 .lp-footer-brand{display:flex;align-items:center;gap:8px;}
 .lp-footer-brand-dot{width:8px;height:8px;border-radius:50%;
-  background:linear-gradient(135deg,#6366F1,#A855F7);}
-.lp-footer-brand-name{font-size:14px;font-weight:800;color:#fff;}
-.lp-footer-copy{font-size:12px;color:rgba(255,255,255,.22);}
+  background:linear-gradient(135deg,#534AB7,#7C3AED);}
+.lp-footer-brand-name{font-size:14px;font-weight:800;color:#1a1a2e;}
+.lp-footer-copy{font-size:12px;color:#9CA3AF;}
 
 /* ── VIRA 品牌图标（心电波形）────────────────────────────────────────── */
 @keyframes vira-ring-out{0%{transform:scale(1);opacity:.65}70%{transform:scale(1.22);opacity:0}100%{transform:scale(1.22);opacity:0}}
 @keyframes vira-wave-draw{from{stroke-dashoffset:120}to{stroke-dashoffset:0}}
 .vira-icon-box{display:inline-flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#818CF8 0%,#C084FC 100%);
+  background:linear-gradient(135deg,#534AB7 0%,#7C3AED 100%);
   flex-shrink:0;position:relative;}
 .vira-icon-box::after{content:'';position:absolute;inset:-5px;
-  border-radius:inherit;border:1.5px solid rgba(129,140,248,.5);
+  border-radius:inherit;border:1.5px solid rgba(83,74,183,.4);
   animation:vira-ring-out 2.8s ease-out infinite;}
 .vira-icon-box svg path{stroke-dasharray:120;stroke-dashoffset:0;
   animation:vira-wave-draw 1.2s ease both;}
 
-/* ── 特性亮点卡片（Braintrust 风格）─────────────────────────────────── */
+/* ── 特性亮点卡片 ────────────────────────────────────────────────────────── */
 .lp-feats{display:grid;grid-template-columns:1fr 1fr;gap:14px;
   margin:56px 0 72px;}
 .lp-feat-card{display:flex;gap:16px;align-items:flex-start;
-  background:#0E0F1A;border:1px solid rgba(255,255,255,.07);
-  border-radius:14px;padding:22px 20px;transition:border-color .2s,transform .15s;}
-.lp-feat-card:hover{border-color:rgba(129,140,248,.3);transform:translateY(-2px);}
+  background:rgba(255,255,255,.85);
+  backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.6);
+  border-radius:14px;padding:22px 20px;
+  box-shadow:0 2px 12px rgba(83,74,183,.05);
+  transition:border-color .2s,transform .15s,box-shadow .2s;}
+.lp-feat-card:hover{
+  border-color:rgba(83,74,183,.22);
+  transform:translateY(-2px);
+  box-shadow:0 8px 24px rgba(83,74,183,.10);}
 .lp-feat-ico{width:46px;height:46px;border-radius:13px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;font-size:21px;
-  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);}
-.lp-feat-title{font-size:15px;font-weight:800;color:#fff;margin-bottom:5px;}
-.lp-feat-body{font-size:13px;color:rgba(255,255,255,.45);line-height:1.65;}
+  background:rgba(83,74,183,.08);border:1px solid rgba(83,74,183,.15);}
+.lp-feat-title{font-size:15px;font-weight:800;color:#1a1a2e;margin-bottom:5px;}
+.lp-feat-body{font-size:13px;color:#6B7280;line-height:1.65;}
 
-/* ── 报告 Mockup 卡 ──────────────────────────────── */
+/* ── 报告 Mockup 卡 ───────────────────────────────────────────────────────── */
 @keyframes lp-mockup-in{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
 .lp-mockup{max-width:500px;margin:28px auto 0;
-  background:#0E0F1A;border:1px solid rgba(255,255,255,.1);border-radius:14px;
-  overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55),
-  0 0 60px rgba(99,102,241,.07);animation:lp-mockup-in .9s .35s ease both;}
-.lp-mk-bar{background:#090A14;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.06);
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(83,74,183,.14);border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 16px 60px rgba(83,74,183,.12);
+  animation:lp-mockup-in .9s .35s ease both;}
+.lp-mk-bar{background:rgba(248,247,255,.95);padding:8px 14px;
+  border-bottom:1px solid rgba(83,74,183,.08);
   display:flex;align-items:center;gap:6px;}
 .lp-mk-bar-dot{width:10px;height:10px;border-radius:50%;}
-.lp-mk-bar-title{flex:1;text-align:center;font-size:10px;color:rgba(255,255,255,.25);letter-spacing:.05em;}
-.lp-mk-export{font-size:9px;color:rgba(99,102,241,.7);border:1px solid rgba(99,102,241,.3);
+.lp-mk-bar-title{flex:1;text-align:center;font-size:10px;color:#9CA3AF;letter-spacing:.05em;}
+.lp-mk-export{font-size:9px;color:#534AB7;border:1px solid rgba(83,74,183,.25);
   padding:2px 8px;border-radius:4px;white-space:nowrap;}
 .lp-mk-body{padding:14px 16px 16px;}
 .lp-mk-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
-.lp-mk-cell{background:#13142A;border-radius:8px;padding:10px 12px;}
-.lp-mk-label{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:.08em;margin-bottom:4px;}
-.lp-mk-val{font-size:13px;font-weight:700;color:#fff;}
-.lp-mk-sub{font-size:10px;color:rgba(255,255,255,.35);margin-top:2px;}
-.lp-mk-scripts{background:#13142A;border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+.lp-mk-cell{background:rgba(238,240,255,.6);border-radius:8px;padding:10px 12px;
+  border:1px solid rgba(83,74,183,.08);}
+.lp-mk-label{font-size:9px;color:#9CA3AF;letter-spacing:.08em;margin-bottom:4px;}
+.lp-mk-val{font-size:13px;font-weight:700;color:#1a1a2e;}
+.lp-mk-sub{font-size:10px;color:#9CA3AF;margin-top:2px;}
+.lp-mk-scripts{background:rgba(238,240,255,.5);border-radius:8px;padding:10px 12px;
+  margin-bottom:8px;border:1px solid rgba(83,74,183,.08);}
 .lp-mk-sr{display:flex;gap:8px;align-items:flex-start;padding:5px 0;
-  border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;
-  color:rgba(255,255,255,.52);line-height:1.5;}
+  border-bottom:1px solid rgba(83,74,183,.07);font-size:11px;
+  color:#374151;line-height:1.5;}
 .lp-mk-sr:last-child{border-bottom:none;}
 .lp-mk-num{flex-shrink:0;width:16px;height:16px;border-radius:50%;
-  background:rgba(99,102,241,.2);color:#A5B4FC;font-size:9px;font-weight:700;
+  background:rgba(83,74,183,.12);color:#534AB7;font-size:9px;font-weight:700;
   display:flex;align-items:center;justify-content:center;}
-.lp-mk-ab{background:linear-gradient(90deg,rgba(99,102,241,.08),rgba(168,85,247,.05));
-  border:1px solid rgba(99,102,241,.15);border-radius:8px;padding:10px 12px;}
-.lp-mk-ab-label{font-size:9px;color:#A5B4FC;letter-spacing:.08em;margin-bottom:6px;}
+.lp-mk-ab{background:rgba(83,74,183,.05);
+  border:1px solid rgba(83,74,183,.12);border-radius:8px;padding:10px 12px;}
+.lp-mk-ab-label{font-size:9px;color:#534AB7;letter-spacing:.08em;margin-bottom:6px;}
 .lp-mk-ab-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
-.lp-mk-ab-item{font-size:10px;color:rgba(255,255,255,.48);line-height:1.55;}
+.lp-mk-ab-item{font-size:10px;color:#374151;line-height:1.55;}
+
 /* ── 冷启动信任 badges ──────────────────────────── */
 .lp-trust-row{display:flex;align-items:center;justify-content:center;gap:8px;
   flex-wrap:wrap;margin-bottom:16px;}
 .lp-team-badge{display:inline-flex;align-items:center;gap:5px;
-  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);
-  color:rgba(255,255,255,.45);font-size:11px;padding:4px 12px;border-radius:20px;}
+  background:rgba(255,255,255,.7);border:1px solid rgba(83,74,183,.15);
+  color:#6B7280;font-size:11px;padding:4px 12px;border-radius:20px;}
 .lp-beta-badge{display:inline-flex;align-items:center;gap:5px;
-  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.22);
-  color:#FCA5A5;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;}
+  background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.20);
+  color:#DC2626;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;}
 .lp-beta-dot{width:7px;height:7px;border-radius:50%;background:#EF4444;
   animation:lp-pulse 1.4s ease-in-out infinite;}
+
 /* ── 早鸟特权模块 ───────────────────────────────── */
-.lp-earlybird{background:#0D0E1C;border:1px solid rgba(99,102,241,.2);
-  border-radius:14px;padding:20px 24px;}
+.lp-earlybird{
+  background:rgba(255,255,255,.85);
+  backdrop-filter:blur(12px);
+  border:1px solid rgba(83,74,183,.18);
+  border-radius:14px;padding:20px 24px;
+  box-shadow:0 4px 20px rgba(83,74,183,.07);}
 .lp-eb-header{display:flex;align-items:flex-start;justify-content:space-between;
   gap:12px;margin-bottom:12px;}
-.lp-eb-title{font-size:14px;font-weight:800;color:#fff;line-height:1.4;}
-.lp-eb-count{font-size:12px;color:rgba(255,255,255,.4);white-space:nowrap;margin-top:2px;}
-.lp-eb-count em{color:#A5B4FC;font-style:normal;font-weight:700;}
-.lp-eb-bar-wrap{height:5px;background:rgba(255,255,255,.06);border-radius:3px;
+.lp-eb-title{font-size:14px;font-weight:800;color:#1a1a2e;line-height:1.4;}
+.lp-eb-count{font-size:12px;color:#9CA3AF;white-space:nowrap;margin-top:2px;}
+.lp-eb-count em{color:#534AB7;font-style:normal;font-weight:700;}
+.lp-eb-bar-wrap{height:5px;background:rgba(83,74,183,.10);border-radius:3px;
   margin-bottom:14px;overflow:hidden;}
-.lp-eb-bar{height:100%;background:linear-gradient(90deg,#6366F1,#A855F7);
-  border-radius:3px;width:17%;}
+.lp-eb-bar{height:100%;background:linear-gradient(90deg,#534AB7,#7C3AED);
+  border-radius:3px;width:3%;}
 .lp-eb-perks{display:flex;flex-direction:column;gap:7px;}
-.lp-eb-perk{display:flex;align-items:center;gap:9px;font-size:13px;color:rgba(255,255,255,.6);}
+.lp-eb-perk{display:flex;align-items:center;gap:9px;font-size:13px;color:#374151;}
 .lp-eb-ico{width:24px;height:24px;border-radius:6px;flex-shrink:0;
-  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
+  background:rgba(83,74,183,.08);border:1px solid rgba(83,74,183,.15);
   display:flex;align-items:center;justify-content:center;font-size:12px;}
+
 /* ── 案例入口 ───────────────────────────────────── */
-.lp-case-link{display:inline-flex;align-items:center;gap:6px;color:#A5B4FC;
+.lp-case-link{display:inline-flex;align-items:center;gap:6px;color:#534AB7;
   font-size:13px;text-decoration:none;
-  border-bottom:1px solid rgba(165,180,252,.22);padding-bottom:1px;
+  border-bottom:1px solid rgba(83,74,183,.25);padding-bottom:1px;
   transition:color .15s,border-color .15s;}
-.lp-case-link:hover{color:#fff;border-color:rgba(255,255,255,.35);}
+.lp-case-link:hover{color:#4338CA;border-color:rgba(83,74,183,.5);}
+
 /* ── 登录文字链接按钮 ─────────────────────────── */
 .lp-login-link-btn .stButton>button{
   background:transparent!important;border:none!important;
-  color:rgba(255,255,255,.36)!important;font-size:12px!important;
+  color:#6B7280!important;font-size:12px!important;
   font-weight:400!important;height:auto!important;padding:3px 4px!important;
   box-shadow:none!important;min-height:0!important;}
-.lp-login-link-btn .stButton>button:hover{color:rgba(255,255,255,.65)!important;}
+.lp-login-link-btn .stButton>button:hover{color:#534AB7!important;}
+
 /* ── CTA 辅助 ─────────────────────────────────── */
-.lp-cta-hint{text-align:center;font-size:12px;color:rgba(255,255,255,.25);
+.lp-cta-hint{text-align:center;font-size:12px;color:#9CA3AF;
   margin-top:9px;letter-spacing:.01em;}
 
-/* 隐藏 Streamlit 按钮默认装饰 */
+/* ── 主 CTA 按钮 ─────────────────────────────── */
 .lp-btn-row .stButton>button{
   border-radius:12px!important;font-size:15px!important;
   font-weight:700!important;height:52px!important;
@@ -1542,12 +1996,15 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     <a class="lp-nav-link" href="#agents">AI 智能体</a>
     <a class="lp-nav-link" href="#pricing">定价</a>
   </div>
-  <span class="lp-nav-cta" id="nav-cta-btn">免费试用 →</span>
+  <div style="display:flex;align-items:center;gap:0;">
+    <button id="vira-anim-toggle" onclick="toggleViraBg()">✦ 动效 ON</button>
+    <span class="lp-nav-cta" id="nav-cta-btn" style="margin-left:10px;">免费试用 →</span>
+  </div>
 </nav>
 <div class="lp-spacer-nav"></div>
 """, unsafe_allow_html=True)
 
-    # ── Hero ─────────────────────────────────────────────────────────────────
+    # ── Hero 文字区 ───────────────────────────────────────────────────────────
     st.markdown("""
 <div class="lp-wrap">
   <div class="lp-hero">
@@ -1559,73 +2016,80 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
         <circle cx="30" cy="5" r="2.8" fill="rgba(255,255,255,0.6)"/>
       </svg>
     </div>
-    <!-- 冷启动信任行 -->
     <div class="lp-trust-row">
-      <div class="lp-team-badge">🛠 由前[行业]电商团队打造 &nbsp;·&nbsp; 持续迭代中</div>
-      <div class="lp-beta-badge"><div class="lp-beta-dot"></div>BETA · 本周已迭代 3 次</div>
+      <div class="lp-team-badge">&#x1F6E0; 由前[行业]电商团队打造 &nbsp;&middot;&nbsp; 持续迭代中</div>
+      <div class="lp-beta-badge"><div class="lp-beta-dot"></div>BETA &middot; 本周已迭代 3 次</div>
     </div>
     <div class="lp-badge">
       <div class="lp-badge-dot"></div>
-      AI &nbsp;·&nbsp; 品牌知识库 &nbsp;·&nbsp; 30s 脚本生成
+      AI &nbsp;&middot;&nbsp; 品牌知识库 &nbsp;&middot;&nbsp; 30s 脚本生成
     </div>
     <div class="lp-h1">上传竞品视频<br><span class="grad">30 秒生成你的下一条脚本</span></div>
     <div class="lp-sub">
       VIRA 是面向 MCN 和品牌运营的 <strong>AI 内容生成工具</strong>。<br>
       输入竞品 + 你的品牌，直接输出<strong>达人可用的拍摄脚本</strong>。
     </div>
+    <div class="lp-hero-cta-ph"></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-    <!-- 报告预览 Mockup -->
-    <div class="lp-mockup">
-      <div class="lp-mk-bar">
-        <div class="lp-mk-bar-dot" style="background:#FF5F57;"></div>
-        <div class="lp-mk-bar-dot" style="background:#FEBC2E;"></div>
-        <div class="lp-mk-bar-dot" style="background:#28C840;"></div>
-        <div class="lp-mk-bar-title">VIRA 竞品分析报告 &nbsp;·&nbsp; [竞品视频名称].mp4</div>
-        <div class="lp-mk-export">导出 PDF</div>
+    # ── 报告预览 Mockup（独立渲染，确保 HTML 不被转义）─────────────────────────
+    st.markdown("""
+<div class="lp-wrap" style="padding-top:4px;padding-bottom:8px;">
+  <div class="lp-mockup">
+    <div class="lp-mk-bar">
+      <div class="lp-mk-bar-dot" style="background:#FF5F57;"></div>
+      <div class="lp-mk-bar-dot" style="background:#FEBC2E;"></div>
+      <div class="lp-mk-bar-dot" style="background:#28C840;"></div>
+      <div class="lp-mk-bar-title">VIRA 竞品分析报告 &nbsp;&middot;&nbsp; [竞品视频名称].mp4</div>
+      <div class="lp-mk-export">导出 PDF</div>
+    </div>
+    <div class="lp-mk-body">
+      <div class="lp-mk-row">
+        <div class="lp-mk-cell">
+          <div class="lp-mk-label">VISUAL SCORE</div>
+          <div class="lp-mk-val">87 <span style="font-size:11px;font-weight:400;color:rgba(255,255,255,.4);">/ 100</span></div>
+          <div class="lp-mk-sub">高于同品类均值 +21%</div>
+        </div>
+        <div class="lp-mk-cell">
+          <div class="lp-mk-label">HOOK 类型</div>
+          <div class="lp-mk-val" style="color:#A5B4FC;">悬念开场</div>
+          <div class="lp-mk-sub">前 3 秒留存率 ↑ 强</div>
+        </div>
+        <div class="lp-mk-cell">
+          <div class="lp-mk-label">合规状态</div>
+          <div class="lp-mk-val" style="color:#34D399;">&#10003; 低风险</div>
+          <div class="lp-mk-sub">合规分 91 / 100</div>
+        </div>
+        <div class="lp-mk-cell">
+          <div class="lp-mk-label">综合评级</div>
+          <div class="lp-mk-val" style="background:linear-gradient(135deg,#6366F1,#A855F7);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+            background-clip:text;">A 级</div>
+          <div class="lp-mk-sub">完播率预估 +24%</div>
+        </div>
       </div>
-      <div class="lp-mk-body">
-        <div class="lp-mk-row">
-          <div class="lp-mk-cell">
-            <div class="lp-mk-label">VISUAL SCORE</div>
-            <div class="lp-mk-val">87 <span style="font-size:11px;font-weight:400;color:rgba(255,255,255,.4);">/ 100</span></div>
-            <div class="lp-mk-sub">高于同品类均值 +21%</div>
-          </div>
-          <div class="lp-mk-cell">
-            <div class="lp-mk-label">HOOK 类型</div>
-            <div class="lp-mk-val" style="color:#A5B4FC;">悬念开场</div>
-            <div class="lp-mk-sub">前 3 秒留存率 ↑ 强</div>
-          </div>
-          <div class="lp-mk-cell">
-            <div class="lp-mk-label">合规状态</div>
-            <div class="lp-mk-val" style="color:#34D399;">✓ 低风险</div>
-            <div class="lp-mk-sub">合规分 91 / 100</div>
-          </div>
-          <div class="lp-mk-cell">
-            <div class="lp-mk-label">综合评级</div>
-            <div class="lp-mk-val">
-              <span style="background:linear-gradient(135deg,#6366F1,#A855F7);
-                -webkit-background-clip:text;-webkit-text-fill-color:transparent;">A 级</span>
-            </div>
-            <div class="lp-mk-sub">完播率预估 +24%</div>
-          </div>
+      <div class="lp-mk-scripts">
+        <div class="lp-mk-label" style="margin-bottom:8px;">SCRIPT SUGGESTIONS &middot; 3 套专属脚本</div>
+        <div class="lp-mk-sr"><div class="lp-mk-num">1</div>「[开场疑问句]——你以为&hellip;其实&hellip;」悬念反转型，适合 15s 短视频</div>
+        <div class="lp-mk-sr"><div class="lp-mk-num">2</div>「[数字+结论]：3 个让完播率提升 30% 的拍摄技巧」数据驱动型</div>
+        <div class="lp-mk-sr"><div class="lp-mk-num">3</div>「[痛点共鸣]&rarr; 解决方案 &rarr; 限时 CTA」转化漏斗型，适合带货场景</div>
+      </div>
+      <div class="lp-mk-ab">
+        <div class="lp-mk-ab-label">A/B TEST 建议</div>
+        <div class="lp-mk-ab-grid">
+          <div class="lp-mk-ab-item">&#9398; 保留当前悬念开场<br>预计完播 68%</div>
+          <div class="lp-mk-ab-item">&#9399; 改为数字结论式<br>预计完播 <strong style="color:#A5B4FC;">82%</strong> &uarr;</div>
         </div>
-        <div class="lp-mk-scripts">
-          <div class="lp-mk-label" style="margin-bottom:8px;">SCRIPT SUGGESTIONS · 3 套可用脚本</div>
-          <div class="lp-mk-sr"><div class="lp-mk-num">1</div>「[开场疑问句]——你以为…其实…」悬念反转型，适合 15s 短视频</div>
-          <div class="lp-mk-sr"><div class="lp-mk-num">2</div>「[数字+结论]：3 个让完播率提升 30% 的拍摄技巧」数据驱动型</div>
-          <div class="lp-mk-sr"><div class="lp-mk-num">3</div>「[痛点共鸣]→ 解决方案 → 限时 CTA」转化漏斗型，适合带货场景</div>
-        </div>
-        <div class="lp-mk-ab">
-          <div class="lp-mk-ab-label">A/B TEST 建议</div>
-          <div class="lp-mk-ab-grid">
-            <div class="lp-mk-ab-item">🅐 保留当前悬念开场<br>预计完播 68%</div>
-            <div class="lp-mk-ab-item">🅑 改为数字结论式<br>预计完播 <strong style="color:#A5B4FC;">82%</strong> ↑</div>
-          </div>
-        </div>
+      </div>
+      <div style="padding:8px 0 2px;text-align:right;">
+        <span style="font-size:9px;color:rgba(99,102,241,.6);
+          font-family:'DM Mono',monospace;letter-spacing:.06em;">
+          置信度 88/100 &nbsp;&middot;&nbsp; 综合评分 A 级
+        </span>
       </div>
     </div>
-
-    <div class="lp-hero-cta-ph"></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1651,7 +2115,7 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
 <div class="lp-earlybird">
   <div class="lp-eb-header">
     <div class="lp-eb-title">🎁 前 100 名内测用户专属权益</div>
-    <div class="lp-eb-count">已有 <em>[17]</em> / 100 名</div>
+    <div class="lp-eb-count">已有 <em>[3]</em> / 100 名</div>
   </div>
   <div class="lp-eb-bar-wrap"><div class="lp-eb-bar"></div></div>
   <div class="lp-eb-perks">
@@ -1675,24 +2139,8 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Stats + Demo ─────────────────────────────────────────────────────────
+    # ── Features + Demo ──────────────────────────────────────────────────────
     st.markdown("""
-<div class="lp-wrap">
-  <div class="lp-stats">
-    <div class="lp-stat">
-      <div class="lp-stat-num">2,400<em>+</em></div>
-      <div class="lp-stat-label">创作者在用</div>
-    </div>
-    <div class="lp-stat">
-      <div class="lp-stat-num">平均 <em>25</em> 秒</div>
-      <div class="lp-stat-label">出完整竞品报告</div>
-    </div>
-    <div class="lp-stat">
-      <div class="lp-stat-num">完播率平均 <em>+28%</em></div>
-      <div class="lp-stat-label">改版后</div>
-    </div>
-  </div>
-</div>
 
 <!-- ── 特性亮点 ── -->
 <div class="lp-wrap">
@@ -1777,14 +2225,16 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
 
 <!-- ── "不只是 AI 分析" section ── -->
 <div id="how" class="lp-wrap lp-section">
-  <div style="font-size:11px;color:#6366F1;font-weight:700;letter-spacing:.14em;margin-bottom:10px;">// 真实的改变</div>
+  <div style="font-size:11px;color:#534AB7;font-weight:700;letter-spacing:.14em;margin-bottom:10px;">// 真实的改变</div>
   <div class="lp-sec-h2">不只是 AI 分析<br>是可执行的改版方案</div>
   <div class="lp-sec-sub">每一条建议都量化到具体数字，每一个问题都给出可直接执行的替换方案。</div>
 
   <div class="lp-ba-grid">
-    <div class="lp-card" style="padding:26px 24px;">
-      <div class="lp-ba-label" style="color:#F87171;">
-        <span style="width:8px;height:8px;border-radius:50%;background:#F87171;flex-shrink:0;display:inline-block;"></span>
+    <div style="padding:26px 24px;background:rgba(255,255,255,.7);backdrop-filter:blur(12px);
+      border:1px solid rgba(255,255,255,.6);border-radius:16px;
+      box-shadow:0 2px 16px rgba(83,74,183,.05);">
+      <div class="lp-ba-label" style="color:#DC2626;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#DC2626;flex-shrink:0;display:inline-block;"></span>
         BEFORE &nbsp;·&nbsp; 以前你的工作方式
       </div>
       <div class="lp-ba-item"><span class="lp-ba-ico">😮</span>手动反复刷竞品视频，靠感觉记录"好像是这个原因"</div>
@@ -1793,16 +2243,18 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       <div class="lp-ba-item"><span class="lp-ba-ico">⏰</span>3 天时间做出来的竞品分析，老板说"不够深入"</div>
       <div class="lp-ba-item"><span class="lp-ba-ico">🎲</span>改版靠猜，拍脑袋，效果好不好要等数据回来才知道</div>
     </div>
-    <div class="lp-card" style="padding:26px 24px;">
-      <div class="lp-ba-label" style="color:#34D399;">
-        <span style="width:8px;height:8px;border-radius:50%;background:#34D399;flex-shrink:0;display:inline-block;"></span>
+    <div style="padding:26px 24px;background:rgba(99,102,241,.06);backdrop-filter:blur(12px);
+      border:1px solid rgba(83,74,183,.15);border-radius:16px;
+      box-shadow:0 2px 16px rgba(83,74,183,.06);">
+      <div class="lp-ba-label" style="color:#059669;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#059669;flex-shrink:0;display:inline-block;"></span>
         AFTER &nbsp;·&nbsp; 有 VIRA 的工作方式
       </div>
-      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>上传视频，25 秒得到结构化爆款公式分析</div>
-      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>四维知识库匹配，基于真实爆款规律，有据可查</div>
-      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>发布前合规扫描，高风险词精确标注并给出修改建议</div>
-      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>30 分钟出一份有数据、有建议、有改版方案的完整报告</div>
-      <div class="lp-ba-item" style="color:rgba(255,255,255,.78);"><span class="lp-ba-ico">✅</span>改版建议量化预测效果（完播率 +X%），有依据有底气</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">✅</span>上传视频，25 秒得到结构化爆款公式分析</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">✅</span>四维知识库匹配，基于真实爆款规律，有据可查</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">✅</span>发布前合规扫描，高风险词精确标注并给出修改建议</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">✅</span>30 分钟出一份有数据、有建议、有改版方案的完整报告</div>
+      <div class="lp-ba-item"><span class="lp-ba-ico">✅</span>改版建议量化预测效果（完播率 +X%），有依据有底气</div>
     </div>
   </div>
 </div>
@@ -1865,9 +2317,9 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
   <div class="lp-sec-sub">每个 Agent 都有专属的知识库和分析视角，结合在一起才是完整的判断。</div>
   <div class="lp-ag3">
     <div class="lp-card lp-ag-card">
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#818CF8;"></div><span style="color:#818CF8;">AGENT A · 视觉拆解师</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#534AB7;"></div><span style="color:#534AB7;">AGENT A · 视觉拆解师</span></div>
       <div class="lp-ag-ico">👁️</div>
-      <div class="lp-ag-name" style="color:#A5B4FC;">获得 Hook 类型评分<br>+ 情绪基调分析</div>
+      <div class="lp-ag-name">获得 Hook 类型评分<br>+ 情绪基调分析</div>
       <div class="lp-ag-role">逐帧分析，比人眼更精准</div>
       <div class="lp-ag-desc">分析竞品 Hook 类型、情绪基调、关键视觉元素，给出量化评分。</div>
       <div class="lp-ag-chips">
@@ -1877,9 +2329,9 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       </div>
     </div>
     <div class="lp-card lp-ag-card">
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#F472B6;"></div><span style="color:#F472B6;">AGENT B · 转化精算师</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#7C3AED;"></div><span style="color:#7C3AED;">AGENT B · 转化精算师</span></div>
       <div class="lp-ag-ico">✍️</div>
-      <div class="lp-ag-name" style="color:#F9A8D4;">获得 3 套可直接使用<br>的商业脚本</div>
+      <div class="lp-ag-name">获得 3 套可直接使用<br>的商业脚本</div>
       <div class="lp-ag-role">结合品牌知识库定制</div>
       <div class="lp-ag-desc">结合你的品牌，生成 3 套可直接发给达人的拍摄脚本。</div>
       <div class="lp-ag-chips">
@@ -1889,9 +2341,9 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
       </div>
     </div>
     <div class="lp-card lp-ag-card">
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#F87171;"></div><span style="color:#F87171;">AGENT C · 合规排雷兵</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#DC2626;"></div><span style="color:#DC2626;">AGENT C · 合规排雷兵</span></div>
       <div class="lp-ag-ico">🛡️</div>
-      <div class="lp-ag-name" style="color:#FCA5A5;">通过抖音 / TikTok<br>违规风险扫描</div>
+      <div class="lp-ag-name">通过抖音 / TikTok<br>违规风险扫描</div>
       <div class="lp-ag-role">发布前最后一道防线</div>
       <div class="lp-ag-desc">扫描抖音 / TikTok 违规风险，极限词一键标红，给出替换建议。</div>
       <div class="lp-ag-chips">
@@ -1903,11 +2355,11 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
   </div>
   <div class="lp-card lp-ag-d">
     <div>
-      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#C084FC;"></div><span style="color:#C084FC;">AGENT D &nbsp;·&nbsp; 策略执行官</span></div>
+      <div class="lp-ag-tag"><div class="lp-ag-dot" style="background:#4338CA;"></div><span style="color:#4338CA;">AGENT D &nbsp;·&nbsp; 策略执行官</span></div>
       <div class="lp-ag-ico">🔮</div>
-      <div class="lp-ag-name" style="color:#E9D5FF;">获得 A/B 发布方案<br>+ 最终决策建议</div>
+      <div class="lp-ag-name">获得 A/B 发布方案<br>+ 最终决策建议</div>
       <div class="lp-ag-role" style="margin-bottom:10px;">读取 A+B+C 全部结果，输出最终判决</div>
-      <div class="lp-ag-desc" style="font-size:13px;color:rgba(255,255,255,.52);line-height:1.65;">
+      <div class="lp-ag-desc" style="font-size:13px;color:#6B7280;line-height:1.65;">
         给出 A/B 发布方案 + 置信度评分 + 最终建议，一句话告诉你「发还是改、改哪里」。</div>
       <div style="margin-top:14px;">
         <a class="lp-case-link" href="[案例页URL]" target="_blank">
@@ -1923,40 +2375,61 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
 删除「最佳」等极限词，在视频第 8 秒增加利益点强化留存……</div>
     </div>
   </div>
+
+  <!-- ── AGENT E · 趋势提炼师（即将上线）── -->
+  <div style="position:relative;opacity:.80;margin-top:16px;">
+    <!-- 即将上线 badge -->
+    <div style="position:absolute;top:14px;right:14px;z-index:2;
+      background:rgba(217,119,6,.10);border:1px solid rgba(217,119,6,.30);
+      border-radius:99px;padding:3px 10px;
+      font-size:10px;font-weight:700;color:#B45309;
+      font-family:'DM Mono',monospace;letter-spacing:.08em;">
+      即将上线
+    </div>
+    <!-- 蒙层 -->
+    <div style="position:absolute;inset:0;border-radius:16px;z-index:1;
+      background:rgba(255,255,255,.15);pointer-events:none;"></div>
+    <div class="lp-card" style="padding:24px;border-color:rgba(217,119,6,.20);">
+      <div class="lp-ag-tag">
+        <div class="lp-ag-dot" style="background:#D97706;"></div>
+        <span style="color:#B45309;">AGENT E &nbsp;&middot;&nbsp; 趋势提炼师</span>
+      </div>
+      <div class="lp-ag-ico">📡</div>
+      <div class="lp-ag-name">发现赛道爆款规律</div>
+      <div class="lp-ag-role">上传 3 个以上竞品，横向提炼可复用内容公式</div>
+      <div class="lp-ag-desc">分析多个竞品后，自动提炼该赛道的 Hook 分布、高频关键词、差异化机会点，输出可直接套用的内容公式。</div>
+      <div class="lp-ag-chips" style="margin-top:10px;">
+        <span class="lp-ag-chip" style="border-color:rgba(217,119,6,.22);color:#B45309;">跨视频对比</span>
+        <span class="lp-ag-chip" style="border-color:rgba(217,119,6,.22);color:#B45309;">爆款公式提炼</span>
+        <span class="lp-ag-chip" style="border-color:rgba(217,119,6,.22);color:#B45309;">赛道健康度</span>
+      </div>
+      <!-- Mock 输出预览 -->
+      <div style="margin-top:14px;background:rgba(217,119,6,.05);
+        border:1px solid rgba(217,119,6,.15);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:9px;color:#B45309;letter-spacing:.1em;
+          font-family:'DM Mono',monospace;margin-bottom:8px;">OUTPUT PREVIEW</div>
+        <div style="font-size:11px;color:#374151;font-weight:700;margin-bottom:6px;">
+          美妆防晒赛道 &middot; 分析 5 个竞品
+        </div>
+        <div style="font-size:11px;color:#6B7280;line-height:1.7;">
+          痛点前置型 Hook 占比 62% &uarr;<br>
+          本周新兴公式：「晒前 3 秒悬念 + 成分科普 + 限时 CTA」<br>
+          <span style="color:#B45309;font-weight:600;">差异化机会：竞品均未覆盖「男生防晒」细分场景</span>
+        </div>
+      </div>
+      <!-- 解锁提示 -->
+      <div style="margin-top:12px;font-size:11px;color:#B45309;">
+        上传 3 个竞品后自动解锁 &rarr;
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- ── 用户评价 ── -->
-<div class="lp-wrap lp-section">
-  <div class="lp-sec-tag">// 用户评价</div>
-  <div class="lp-sec-h2">他们用了之后说</div>
-  <div class="lp-reviews">
-    <div class="lp-card lp-review">
-      <div class="lp-stars">★★★★★</div>
-      <div class="lp-rv-text">以前分析一个竞品视频要花半天，现在 25 秒。关键是建议真的很具体，
-不是那种「建议优化视觉呈现」的废话。</div>
-      <div class="lp-rv-by">
-        <div class="lp-rv-avatar" style="background:linear-gradient(135deg,#6366F1,#A855F7);">陈</div>
-        <div><div class="lp-rv-name">陈 ××</div><div class="lp-rv-role">美妆品牌内容总监</div></div>
-      </div>
-    </div>
-    <div class="lp-card lp-review">
-      <div class="lp-stars">★★★★★</div>
-      <div class="lp-rv-text">合规检查这个功能太救命了，我们之前有一条投了 3 万的素材
-因为有极限词被限流。现在发布前必查。</div>
-      <div class="lp-rv-by">
-        <div class="lp-rv-avatar" style="background:linear-gradient(135deg,#059669,#10B981);">王</div>
-        <div><div class="lp-rv-name">王 ××</div><div class="lp-rv-role">MCN 运营总监</div></div>
-      </div>
-    </div>
-    <div class="lp-card lp-review">
-      <div class="lp-stars">★★★★☆</div>
-      <div class="lp-rv-text">作为独立创作者，最有价值的是爆款因子评分，
-能量化地知道哪个维度需要提升，不再全靠感觉。</div>
-      <div class="lp-rv-by">
-        <div class="lp-rv-avatar" style="background:linear-gradient(135deg,#D97706,#F59E0B);">李</div>
-        <div><div class="lp-rv-name">李 ××</div><div class="lp-rv-role">百万粉创作者</div></div>
-      </div>
-    </div>
+<!-- ── 内测说明 ── -->
+<div class="lp-wrap lp-section" style="padding-top:8px;padding-bottom:8px;">
+  <div style="text-align:center;font-size:13px;color:#9CA3AF;
+    letter-spacing:.01em;line-height:1.7;">
+    目前开放内测 &nbsp;&middot;&nbsp; 每周迭代 &nbsp;&middot;&nbsp; 首批用户直接对话产品团队
   </div>
 </div>
 
@@ -2044,19 +2517,79 @@ details.lp-faq p{font-size:13.5px;color:rgba(255,255,255,.48);
     <span class="lp-ticker-item">⚡ 25 秒出报告<span class="lp-ticker-sep">·</span></span>
   </div>
 </div>
-<div style="max-width:100%;background:#080910;border-top:1px solid rgba(255,255,255,.04);padding:24px 48px;
-            display:flex;justify-content:space-between;align-items:center;">
+<div style="max-width:100%;background:rgba(255,255,255,.6);
+  border-top:1px solid rgba(83,74,183,.10);padding:24px 48px;
+  display:flex;justify-content:space-between;align-items:center;">
   <div style="display:flex;align-items:center;gap:8px;">
     <div style="width:8px;height:8px;border-radius:50%;
-                background:linear-gradient(135deg,#6366F1,#A855F7);"></div>
-    <span style="font-size:14px;font-weight:900;color:#fff;">VIRA</span>
-    <span style="font-size:12px;color:rgba(255,255,255,.22);margin-left:12px;">
+                background:linear-gradient(135deg,#534AB7,#7C3AED);"></div>
+    <span style="font-size:14px;font-weight:900;color:#1a1a2e;">VIRA</span>
+    <span style="font-size:12px;color:#9CA3AF;margin-left:12px;">
       爆款侦察兵</span>
   </div>
-  <div style="font-size:12px;color:rgba(255,255,255,.2);">
+  <div style="font-size:12px;color:#9CA3AF;">
     © 2026 VIRA &nbsp;·&nbsp; 注册即获 5 份免费脚本生成额度 &nbsp;·&nbsp; Multi-Agent + RAG
   </div>
 </div>
+
+<!-- ── Canvas 动效层 ─────────────────────────────────────────────────── -->
+<canvas id="vira-bg-canvas"></canvas>
+
+<script>
+(function(){
+  var canvas = document.getElementById('vira-bg-canvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W, H, t = 0, animOn = true, rafId;
+
+  var orbs = [
+    {x:0.08, y:0.06, color:'168,120,255', speed:0.00025, ox:0},
+    {x:0.90, y:0.85, color:'240,140,190', speed:0.00018, ox:2},
+    {x:0.80, y:0.10, color:'170,150,255', speed:0.00032, ox:4},
+    {x:0.15, y:0.88, color:'140,115,255', speed:0.00022, ox:6},
+  ];
+
+  function resize(){
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function draw(){
+    if (!animOn) return;
+    ctx.clearRect(0,0,W,H);
+    t += 0.6;
+    orbs.forEach(function(o){
+      var x = (o.x + Math.sin(t * o.speed + o.ox) * 0.09) * W;
+      var y = (o.y + Math.cos(t * o.speed + o.ox) * 0.07) * H;
+      var r = Math.min(W,H) * 0.46;
+      var g = ctx.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,   'rgba('+o.color+',0.22)');
+      g.addColorStop(0.45,'rgba('+o.color+',0.08)');
+      g.addColorStop(1,   'rgba('+o.color+',0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,W,H);
+    });
+    rafId = requestAnimationFrame(draw);
+  }
+
+  window.toggleViraBg = function(){
+    animOn = !animOn;
+    var btn = document.getElementById('vira-anim-toggle');
+    if (animOn){
+      draw();
+      if (btn) btn.textContent = '✦ 动效 ON';
+    } else {
+      cancelAnimationFrame(rafId);
+      ctx.clearRect(0,0,W,H);
+      if (btn) btn.textContent = '✦ 动效 OFF';
+    }
+  };
+
+  window.addEventListener('resize', resize);
+  resize();
+  draw();
+})();
+</script>
 """, unsafe_allow_html=True)
 
 
@@ -2073,12 +2606,13 @@ if not st.session_state.authenticated:
 # 延迟导入工厂（避免 API Key 缺失时模块级崩溃）
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _workflow(rag_text: str = ""):
+def _workflow(rag_text: str = "", brand_context: str = ""):
     from core.workflow import VIRAWorkflow
     return VIRAWorkflow(
-        api_key  = st.session_state.api_key,
-        model    = st.session_state.model,
-        rag_text = rag_text,
+        api_key       = get_api_key(),
+        model         = st.session_state.model,
+        rag_text      = rag_text,
+        brand_context = brand_context,
     )
 
 def _feedback_store():
@@ -2088,6 +2622,296 @@ def _feedback_store():
 def _history_store():
     from services.rag import HistoryStore
     return HistoryStore()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Agent E · 趋势提炼师
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_trend_agent(all_results: list, category: str) -> dict:
+    """
+    横向分析多次竞品结果，提炼赛道爆款规律。
+    all_results: 历次 workflow result 对象列表
+    category:    品牌知识库里的品类
+    """
+    import openai, json as _json
+    client = openai.OpenAI(api_key=get_api_key())
+
+    summaries: list[str] = []
+    for i, r in enumerate(all_results[-5:]):
+        try:
+            v = r.visual.data if (r and r.visual and r.visual.success) else {}
+            c = r.commerce.data if (r and r.commerce and r.commerce.success) else {}
+            hook_type  = v.get("hook_type", "未知")
+            hook_score = v.get("hook_score", 0)
+            scripts    = c.get("scripts", [])
+            summaries.append(
+                f"竞品{i+1}：Hook类型={hook_type}，"
+                f"评分={hook_score}，"
+                f"脚本Hook={[s.get('hook','') for s in scripts[:2]]}"
+            )
+        except Exception:
+            continue
+
+    if not summaries:
+        return {"summary": "暂无足够的历史分析数据，请先完成至少 3 次竞品分析"}
+
+    prompt = f"""你是 VIRA 平台的 Agent E「趋势提炼师」。
+品类：{category or '通用'}
+以下是该品类 {len(summaries)} 个竞品的分析摘要：
+{chr(10).join(summaries)}
+
+请输出以下 JSON，不得有任何额外文字：
+{{
+  "hook_distribution": {{
+    "top_type": "string（最主流Hook类型）",
+    "top_ratio": "string（估算占比，如 62%）",
+    "rising_type": "string（上升趋势类型）"
+  }},
+  "top_formula": "string（最可复用的内容公式，一句话）",
+  "hot_keywords": ["string", "string", "string"],
+  "opportunity": "string（差异化机会点，一句话）",
+  "risk_level": "低/中/高",
+  "summary": "string（≤60字总结）"
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model=st.session_state.get("model", "gpt-4o"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.3,
+        )
+        raw = resp.choices[0].message.content.strip()
+        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return _json.loads(raw)
+    except Exception as e:
+        return {"summary": f"趋势分析暂时无法生成：{e}"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 链接解析 · parse_video_url / parse_douyin_url / parsed_to_analysis_input
+# ══════════════════════════════════════════════════════════════════════════════
+
+def parse_douyin_url(url: str) -> dict:
+    """
+    抖音链接备用解析方案（yt-dlp 失败时调用）
+    使用 RapidAPI Douyin Downloader；需要在 secrets.toml 配置 rapidapi_key。
+    """
+    import requests, re as _re
+
+    try:
+        resp = requests.get(url, allow_redirects=True, timeout=10)
+        final_url = resp.url
+    except Exception:
+        final_url = url
+
+    video_id_match = _re.search(r'/video/(\d+)', final_url)
+    if not video_id_match:
+        return {"success": False, "error": "无法识别视频 ID，请确认链接格式"}
+
+    video_id = video_id_match.group(1)
+
+    try:
+        rapidapi_key = ""
+        try:
+            rapidapi_key = st.secrets.get("rapidapi_key", "")
+        except Exception:
+            pass
+        if not rapidapi_key:
+            import os as _os
+            rapidapi_key = _os.getenv("RAPIDAPI_KEY", "")
+        if not rapidapi_key:
+            return {
+                "success": False,
+                "error": "未配置 RapidAPI Key，请在 secrets.toml 加入 rapidapi_key",
+            }
+
+        api_resp = requests.get(
+            "https://douyin-downloader.p.rapidapi.com/video",
+            headers={
+                "X-RapidAPI-Key": rapidapi_key,
+                "X-RapidAPI-Host": "douyin-downloader.p.rapidapi.com",
+            },
+            params={"video_id": video_id},
+            timeout=15,
+        )
+        data = api_resp.json()
+        thumbnail_bytes = None
+        cover_url = data.get("cover", "")
+        if cover_url:
+            try:
+                t = requests.get(cover_url, timeout=10)
+                if t.status_code == 200:
+                    thumbnail_bytes = t.content
+            except Exception:
+                pass
+        return {
+            "success": True,
+            "platform": "抖音",
+            "title": data.get("desc", ""),
+            "description": "",
+            "duration": 0,
+            "view_count": data.get("play_count", 0),
+            "like_count": data.get("digg_count", 0),
+            "uploader": data.get("author", {}).get("nickname", ""),
+            "thumbnail_bytes": thumbnail_bytes,
+            "tags": [],
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def parse_video_url(url: str, platform: str) -> dict:
+    """
+    解析视频链接，返回标准化数据包。
+    优先用 yt-dlp（免费稳定），抖音失败时自动降级到 RapidAPI。
+    """
+    import requests as _req
+
+    try:
+        import yt_dlp  # noqa: F401
+    except ImportError:
+        if platform == "抖音":
+            return parse_douyin_url(url)
+        return {
+            "success": False,
+            "error": "请先安装 yt-dlp：pip install yt-dlp",
+        }
+
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": False,
+            "skip_download": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        thumbnail_bytes = None
+        thumbnail_url = info.get("thumbnail", "")
+        if thumbnail_url:
+            try:
+                t = _req.get(thumbnail_url, timeout=10)
+                if t.status_code == 200:
+                    thumbnail_bytes = t.content
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "platform": platform,
+            "url": url,
+            "title": info.get("title", ""),
+            "description": info.get("description", "") or "",
+            "duration": info.get("duration", 0) or 0,
+            "view_count": info.get("view_count", 0) or 0,
+            "like_count": info.get("like_count", 0) or 0,
+            "uploader": info.get("uploader", "") or "",
+            "thumbnail_bytes": thumbnail_bytes,
+            "tags": info.get("tags", []) or [],
+        }
+    except Exception as e:
+        err_str = str(e)
+        # 抖音反爬机制 → 降级到 RapidAPI
+        if platform == "抖音":
+            fallback = parse_douyin_url(url)
+            if fallback.get("success"):
+                return fallback
+        return {"success": False, "error": err_str}
+
+
+def parsed_to_analysis_input(parsed: dict) -> dict:
+    """把链接解析结果转为 Agent 输入格式（附封面图 base64）"""
+    import base64 as _b64
+    input_data: dict = {
+        "input_type": "url",
+        "platform": parsed.get("platform", ""),
+        "title": parsed.get("title", ""),
+        "description": parsed.get("description", ""),
+        "duration_seconds": parsed.get("duration", 0),
+        "view_count": parsed.get("view_count", 0),
+        "like_count": parsed.get("like_count", 0),
+        "uploader": parsed.get("uploader", ""),
+        "tags": parsed.get("tags", []),
+    }
+    if parsed.get("thumbnail_bytes"):
+        input_data["thumbnail_b64"] = _b64.b64encode(
+            parsed["thumbnail_bytes"]
+        ).decode()
+    return input_data
+
+
+def render_trend_report(result: dict) -> None:
+    """渲染 Agent E 趋势报告卡片"""
+    if not result or (len(result) == 1 and "summary" in result):
+        st.error(result.get("summary", "趋势分析失败"))
+        return
+
+    hd        = result.get("hook_distribution", {})
+    formula   = result.get("top_formula", "—")
+    keywords  = result.get("hot_keywords", [])
+    oppo      = result.get("opportunity", "—")
+    risk      = result.get("risk_level", "—")
+    summary   = result.get("summary", "—")
+    category  = st.session_state.get("b_cat", "通用品类")
+
+    risk_color = {"低": "#34D399", "中": "#FCD34D", "高": "#F87171"}.get(risk, "#A5B4FC")
+    kw_html = "".join(
+        f'<span style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.25);'
+        f'border-radius:6px;padding:3px 9px;font-size:11px;color:#A5B4FC;">{k}</span>'
+        for k in keywords
+    )
+
+    st.markdown(f"""
+<div style="background:linear-gradient(135deg,rgba(251,191,36,.06),rgba(99,102,241,.06));
+  border:1px solid rgba(251,191,36,.25);border-top:2px solid #FCD34D;
+  border-radius:14px;padding:24px 28px;margin:12px 0;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+    <div style="font-size:22px;">📡</div>
+    <div>
+      <div style="font-size:9px;color:#FCD34D;font-family:'DM Mono',monospace;
+        letter-spacing:.14em;margin-bottom:2px;">AGENT E &middot; 趋势提炼师</div>
+      <div style="font-size:16px;font-weight:800;color:#FEF3C7;">
+        {category} 赛道趋势报告
+      </div>
+    </div>
+  </div>
+  <div style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:18px;line-height:1.65;">
+    {summary}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+    <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:12px 14px;">
+      <div style="font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-bottom:6px;">主流 HOOK</div>
+      <div style="font-size:15px;font-weight:700;color:#FEF3C7;">{hd.get('top_type','—')}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px;">
+        占比 {hd.get('top_ratio','—')}
+        &nbsp;·&nbsp; 新兴：{hd.get('rising_type','—')}
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:12px 14px;">
+      <div style="font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-bottom:6px;">赛道风险</div>
+      <div style="font-size:15px;font-weight:700;color:{risk_color};">{risk}</div>
+    </div>
+  </div>
+  <div style="background:rgba(251,191,36,.06);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+    <div style="font-size:9px;color:rgba(252,211,77,.5);letter-spacing:.1em;margin-bottom:6px;">爆款公式</div>
+    <div style="font-size:13px;color:#FEF3C7;font-weight:600;">「{formula}」</div>
+  </div>
+  <div style="margin-bottom:12px;">
+    <div style="font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-bottom:8px;">高频关键词</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">{kw_html}</div>
+  </div>
+  <div style="background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);
+    border-radius:10px;padding:12px 14px;">
+    <div style="font-size:9px;color:rgba(52,211,153,.6);letter-spacing:.1em;margin-bottom:4px;">
+      ✦ 差异化机会
+    </div>
+    <div style="font-size:13px;color:#A7F3D0;">{oppo}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2352,10 +3176,20 @@ with st.sidebar:
         st.rerun()
 
     # ── 管理员后台入口（仅对 ADMIN_EMAIL 可见）────────────────────────────────
+    # 三重防护：① secrets 中必须显式配置 ADMIN_EMAIL；
+    #           ② 当前 session 必须已通过密码认证（user_info 存在）；
+    #           ③ 使用 hmac.compare_digest 时序安全比较，防止枚举攻击。
+    import hmac as _hmac
     _admin_email = (
         st.secrets.get("ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL", "")
     ).strip().lower()
-    if _admin_email and _email_s.lower() == _admin_email:
+    _is_authenticated = bool(st.session_state.get("user_info"))
+    _email_matches = (
+        bool(_admin_email)
+        and _is_authenticated
+        and _hmac.compare_digest(_email_s.lower(), _admin_email)
+    )
+    if _email_matches:
         st.markdown("---")
         with st.expander("🛠 管理员后台", expanded=False):
             st.markdown(
@@ -2456,14 +3290,14 @@ with st.sidebar:
 """, unsafe_allow_html=True)
     # API Key 永远不显示在任何 UI 元素中
     # Key 仅在服务端 session_state 内存中存在，不渲染到任何 HTML
-    _is_admin_view = _admin_email and _email_s.lower() == _admin_email
+    _is_admin_view = _email_matches
     if _is_admin_view:
         # 管理员只能切换模型，key 完全不可见
         st.session_state.model = st.selectbox(
             "模型", ["gpt-4o", "gpt-4o-mini"], index=0,
             help="gpt-4o 视觉最强；gpt-4o-mini 更快省 Token",
         )
-        _key_masked = ("已配置 ✅" if st.session_state.api_key else "未配置 ❌")
+        _key_masked = ("已配置 ✅" if get_api_key() else "未配置 ❌")
         st.markdown(
             f'<div style="font-size:10px;color:#3D4F68;margin-top:4px;">'
             f'API Key 状态：<b style="color:#22C55E;">{_key_masked}</b>'
@@ -2472,6 +3306,37 @@ with st.sidebar:
         )
 
     st.divider()
+
+    # ── API Key 状态指示（非管理员可见）──────────────────────────────────────
+    if _api_key_from_backend():
+        st.markdown("""
+<div style="display:flex;align-items:center;gap:8px;
+            background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);
+            border-radius:10px;padding:9px 14px;margin-bottom:12px;">
+  <span style="width:7px;height:7px;border-radius:50%;background:#22C55E;
+               display:inline-block;flex-shrink:0;
+               box-shadow:0 0 8px rgba(34,197,94,.7);"></span>
+  <span style="font-size:12px;font-weight:600;color:#22C55E;">
+    ✦ VIRA 内测版 · AI 分析已就绪
+  </span>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        # 本地开发兜底：手动输入 API Key
+        st.markdown(
+            '<div style="font-size:10px;color:#F59E0B;margin-bottom:4px;">'
+            '⚠️ 未检测到后端 Key，开发模式</div>',
+            unsafe_allow_html=True,
+        )
+        _dev_key = st.text_input(
+            "OpenAI API Key（开发调试用）",
+            value=st.session_state.get("api_key", ""),
+            type="password",
+            placeholder="sk-...",
+            label_visibility="collapsed",
+        )
+        if _dev_key != st.session_state.get("api_key", ""):
+            st.session_state.api_key = _dev_key
 
     st.markdown(
         '<div style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.18em;'
@@ -2669,1241 +3534,2182 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── 指标大屏（仅在有分析结果时显示）─────────────────────────────────────────
-wf = st.session_state.workflow_result
-if wf:
-    st.markdown("""
-<div style="padding:28px 0 14px;">
-  <div class="slbl">实时分析仪表盘</div>
-</div>""", unsafe_allow_html=True)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("HOOK 吸睛指数",   f"{_safe(wf,'visual','data','hook_score')}/100",    help="Agent 1 · Hook 质量评分")
-    m2.metric("带货转化潜力",     f"{_safe(wf,'commerce','data','conversion_potential')}/100", help="Agent 2 · 商业转化潜力")
-    m3.metric("合规风险等级",     str(_safe(wf,"compliance","data","risk_level")),     help="Agent 3 · LOW / MEDIUM / HIGH")
-    m4.metric("成功置信度",       f"{_safe(wf,'strategy','data','confidence_score')}/100", help="Agent 4 · 复刻成功综合置信度")
-    st.markdown('<hr class="vira-hr" style="margin:20px 0;">', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 「我的爆款归因」分析函数（同步，session_state 存储，刷新清空）
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _run_attribution_analysis(files, platform, category, goal):
+    """分析用户自身历史爆款截图，提炼品牌专属规律。同步执行，兼容 Streamlit 主线程。"""
+    import base64 as _b64
+    import json
+    from prompts import ATTRIBUTION_ANALYST
+
+    _attr_api_key = get_api_key()
+    if not _attr_api_key:
+        st.error("请先在侧边栏配置 OpenAI API Key")
+        return None
+
+    user_content = []
+    ctx_text = f"以下是该创作者/品牌在【{platform}】平台发布的历史爆款内容截图"
+    if category:
+        ctx_text += f"，品类为【{category}】"
+    if goal:
+        ctx_text += f"，主要目标是【{goal}】"
+    ctx_text += f"。共{len(files)}张，请分析这些内容的共同规律。"
+    user_content.append({"type": "text", "text": ctx_text})
+
+    for _afile in files:
+        _img_bytes = _afile.read()
+        _b64_str = _b64.b64encode(_img_bytes).decode("utf-8")
+        _ext = _afile.name.rsplit(".", 1)[-1].lower()
+        _mime = "image/jpeg" if _ext in ("jpg", "jpeg") else f"image/{_ext}"
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{_mime};base64,{_b64_str}", "detail": "high"},
+        })
+
+    try:
+        import openai as _oa_attr
+        _attr_cli = _oa_attr.OpenAI(api_key=_attr_api_key)
+        _attr_resp = _attr_cli.chat.completions.create(
+            model=st.session_state.get("model", "gpt-4o"),
+            messages=[
+                {"role": "system", "content": ATTRIBUTION_ANALYST},
+                {"role": "user", "content": user_content},
+            ],
+            max_tokens=2000,
+            temperature=0.3,
+        )
+        _raw = _attr_resp.choices[0].message.content.strip()
+        if _raw.startswith("```"):
+            _raw = _raw.split("```")[1]
+            if _raw.startswith("json"):
+                _raw = _raw[4:]
+        return json.loads(_raw)
+    except json.JSONDecodeError as _je:
+        st.error(f"归因分析 JSON 解析失败：{_je}")
+        logger.error("Attribution JSON parse error: %s", _je)
+        return None
+    except Exception as _exc:
+        st.error(f"归因分析失败：{_exc}")
+        logger.error("Attribution analysis error: %s", _exc, exc_info=True)
+        return None
+
+
+def log_feedback(feedback_type, value, extra=None):
+    """轻量反馈写入 feedback_log.jsonl，静默失败不影响用户体验。"""
+    import json as _json_fb, datetime as _dt_fb
+    _fb_entry = {
+        "timestamp": _dt_fb.datetime.now().isoformat(),
+        "type":      feedback_type,
+        "value":     value,
+        "extra":     extra,
+    }
+    try:
+        with open("feedback_log.jsonl", "a", encoding="utf-8") as _fbf:
+            _fbf.write(_json_fb.dumps(_fb_entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # 静默失败，不影响用户体验
+
+
+def _regenerate_single_script(script_index, visual_summary, brand_context, style_prefs):
+    """重新生成单套脚本，不重跑完整4-Agent流程。同步执行，兼容 Streamlit 主线程。"""
+    import json as _json_regen
+    _api_key = get_api_key()
+    if not _api_key:
+        st.error("请先在侧边栏配置 OpenAI API Key")
+        return None
+
+    _sp = style_prefs or {}
+    _sp_lines = []
+    if _sp.get("tone", "中性") != "中性":
+        _sp_lines.append(f"- 语言风格：{_sp['tone']}（请按此风格调整词汇和句式）")
+    if _sp.get("length", "标准（60s）") != "标准（60s）":
+        _sp_lines.append(f"- 目标时长：{_sp['length']}（请控制脚本内容量）")
+    if _sp.get("creator", "不限") != "不限":
+        _sp_lines.append(f"- 适配达人类型：{_sp['creator']}（请考虑该类达人的表达习惯）")
+    _sp_block = ("\n【脚本风格要求】\n" + "\n".join(_sp_lines)) if _sp_lines else ""
+
+    _system_prompt = (
+        "你是一个电商内容策划专家，专门生成高转化率的品牌专属拍摄脚本。\n"
+        + (f"品牌信息：\n{brand_context}\n" if brand_context else "")
+        + _sp_block
+        + "\n严格输出 JSON，不得有任何额外文字。"
+    )
+    _user_prompt = (
+        f"基于以下竞品分析，重新生成第{script_index + 1}套脚本。"
+        f"要求与原版本有明显差异，换一种开场角度和内容结构。\n\n"
+        f"竞品分析摘要：\n{visual_summary}\n\n"
+        f"严格输出以下 JSON，不得有任何额外文字：\n"
+        '{{\n'
+        '  "title": "方案名称（如：反转型 / 探索型）",\n'
+        '  "hook": "开场Hook台词（前3秒，≤15字）",\n'
+        '  "scenes": [\n'
+        '    {{"scene_no": 1, "description": "分镜画面描述", "dialogue": "台词要点"}},\n'
+        '    {{"scene_no": 2, "description": "分镜画面描述", "dialogue": "台词要点"}},\n'
+        '    {{"scene_no": 3, "description": "分镜画面描述", "dialogue": "台词要点"}}\n'
+        '  ],\n'
+        '  "cta": "结尾CTA台词（≤10字）",\n'
+        '  "influencer_type": "素人/腰部达人/头部达人",\n'
+        '  "platforms": ["平台名"],\n'
+        '  "compliance_note": "合规提醒（如有禁用词请指出，无则填无）",\n'
+        '  "diff_from_original": "和原版本的主要区别（一句话）"\n'
+        '}}'
+    )
+    try:
+        import openai as _oa_regen
+        _cli = _oa_regen.OpenAI(api_key=_api_key)
+        _resp = _cli.chat.completions.create(
+            model=st.session_state.get("model", "gpt-4o"),
+            messages=[
+                {"role": "system", "content": _system_prompt},
+                {"role": "user",   "content": _user_prompt},
+            ],
+            max_tokens=1000,
+            temperature=0.85,
+        )
+        _raw = _resp.choices[0].message.content.strip()
+        if _raw.startswith("```"):
+            _raw = _raw.split("```")[1]
+            if _raw.startswith("json"):
+                _raw = _raw[4:]
+        return _json_regen.loads(_raw)
+    except _json_regen.JSONDecodeError as _je:
+        st.error(f"重新生成 JSON 解析失败：{_je}")
+        logger.error("Regen JSON parse error: %s", _je)
+        return None
+    except Exception as _exc:
+        st.error(f"重新生成失败：{_exc}")
+        logger.error("Regen script error: %s", _exc, exc_info=True)
+        return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 上传区域（未分析时显示）
+# 顶层导航 Tab：🔍 竞品分析 / 📊 我的爆款归因
 # ══════════════════════════════════════════════════════════════════════════════
+_tab_comp, _tab_attr = st.tabs(["🔍 竞品分析", "📊 我的爆款归因"])
 
-ALLOWED_TYPES  = ["jpg", "jpeg", "png", "webp"]
-MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB 硬限制
-
-if not st.session_state.workflow_result:
-    # ── Agent 专家卡片展示组 ──────────────────────────────────────────────────
+# ── Tab 2：我的爆款归因 ───────────────────────────────────────────────────────
+with _tab_attr:
+    st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
     st.markdown("""
-<div class="vira-sec">
-  <div class="slbl">AI 智能体</div>
-  <div class="vira-sec-sh cn">4个专家Agent<br>各司其职，协同出击</div>
-  <p class="vira-sec-sp">每个Agent都有专属的知识库和分析视角，结合在一起才是完整的判断。</p>
-</div>
-
-<div class="ag3col">
-  <!-- Agent 1 · 视觉拆解师 -->
-  <div class="agcard ag-cy">
-    <div class="agid" style="color:var(--cy)">
-      <div class="agdot" style="background:var(--cy)"></div>AGENT 1
-    </div>
-    <span class="agico">👁</span>
-    <div class="agname">视觉拆解师</div>
-    <div class="agsub">逐帧分析画面，比人眼更精准</div>
-    <div class="agdesc">分析前3秒Hook类型、画面色彩情绪、文字布局质量——和爆款规律知识库对比，给出 Hook 评分与视觉质量分。</div>
-    <div class="agtags">
-      <span class="agtag" style="border-color:rgba(56,189,248,.3);color:var(--cy)">Hook评分</span>
-      <span class="agtag" style="border-color:rgba(56,189,248,.3);color:var(--cy)">色彩情绪</span>
-      <span class="agtag" style="border-color:rgba(56,189,248,.3);color:var(--cy)">视觉质量</span>
-    </div>
-  </div>
-
-  <!-- Agent 3 · 合规排雷兵 -->
-  <div class="agcard ag-re">
-    <div class="agid" style="color:var(--re)">
-      <div class="agdot" style="background:var(--re)"></div>AGENT 3
-    </div>
-    <span class="agico">🛡</span>
-    <div class="agname">合规排雷兵</div>
-    <div class="agsub">发布前的最后一道防线</div>
-    <div class="agdesc">比对平台合规规则库（TikTok/抖音），精确识别极限用语、医疗声称、金融承诺等高风险内容，给出风险级别和修改建议。</div>
-    <div class="agtags">
-      <span class="agtag" style="border-color:rgba(255,61,85,.3);color:var(--re)">违规词检测</span>
-      <span class="agtag" style="border-color:rgba(255,61,85,.3);color:var(--re)">风险分级</span>
-      <span class="agtag" style="border-color:rgba(255,61,85,.3);color:var(--re)">修改建议</span>
-    </div>
-  </div>
-
-  <!-- Agent 2 · 转化精算师 -->
-  <div class="agcard ag-pu">
-    <div class="agid" style="color:var(--pu)">
-      <div class="agdot" style="background:var(--pu)"></div>AGENT 2
-    </div>
-    <span class="agico">📈</span>
-    <div class="agname">转化精算师</div>
-    <div class="agsub">RAG知识库增强，生成3套改版脚本</div>
-    <div class="agdesc">结合视觉分析结果与品牌知识库，评估病毒传播潜力与商业转化潜力，输出3套可直接执行的重构脚本。</div>
-    <div class="agtags">
-      <span class="agtag" style="border-color:rgba(168,85,247,.3);color:var(--pu)">病毒预测</span>
-      <span class="agtag" style="border-color:rgba(168,85,247,.3);color:var(--pu)">RAG增强</span>
-      <span class="agtag" style="border-color:rgba(168,85,247,.3);color:var(--pu)">脚本重构</span>
-    </div>
-  </div>
-</div>
-
-<!-- Agent 4 · 策略执行官 全宽卡 -->
-<div class="agd" style="margin-bottom:24px;">
-  <div class="agd-inner">
-    <div class="agd-left">
-      <div class="agid" style="color:var(--bl)">
-        <div class="agdot" style="background:var(--bl)"></div>AGENT 4 · 综合汇总
-      </div>
-      <span class="agico" style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;font-size:.85em;letter-spacing:-.02em;">V</span>
-      <div class="agname">策略执行官</div>
-      <div class="agsub" style="color:var(--t1)">读取 A1+A2+A3 全部结果，输出最终战略裁决</div>
-      <div class="agdesc">综合三个专家Agent的分析，给出成功置信度评分（0-100）、A/B Test 实验方案设计，以及前3秒改法、视觉升级点、文案优化方向的完整改版指令。</div>
-    </div>
-    <div class="agd-right">
-      <div class="dout-lbl">OUTPUT EXAMPLE</div>
-      <div class="dgrade-row">
-        <div class="dgrade-box">A</div>
-        <div class="dgrade-info"><strong>置信度 88/100 · 强烈建议复刻</strong><br>改版后预计 +24% 完播率</div>
-      </div>
-      <div class="dreco">A/B Test 方案：将第2秒文字换为反常识结论式开场，删除<strong>"最佳"等极限词</strong>，在视频第8秒增加利益点强化留存……</div>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown("""
-<hr class="vira-hr">
-<div class="vira-sec">
-  <div class="slbl">开始分析</div>
-  <div class="vira-sec-sh cn">上传截图或视频<br>启动四 Agent 并发分析</div>
-  <p class="vira-sec-sp">
-    支持上传竞品截图（批量）或视频文件（自动提取口播文案）。
-    上传视频后 AI 自动用 Whisper 转录口播内容，辅助脚本分析。
-  </p>
-</div>
-""", unsafe_allow_html=True)
-
-    # ── 视频口播提取区（独立模块，不影响图片分析流程）────────────────────────
-    with st.expander("🎬 视频口播提取（上传视频 → Whisper 自动转录）", expanded=False):
-        _vid_col, _vid_tip = st.columns([2, 1])
-        with _vid_col:
-            _vid_file = st.file_uploader(
-                "上传视频文件（MP4 · MOV · WebM · ≤ 50 MB）",
-                type=["mp4", "mov", "webm", "avi", "m4a", "mp3", "wav"],
-                label_visibility="collapsed",
-                key="video_uploader",
-            )
-        with _vid_tip:
-            st.markdown("""
-<div class="glass" style="border-left:2px solid var(--pu);padding:14px 16px;">
-  <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;
-              color:var(--pu);margin-bottom:8px;">// 视频口播提取</div>
-  <div style="font-size:12px;color:var(--t1);line-height:1.8;">
-    · 上传竞品视频，AI 自动转录口播文案<br>
-    · 转录结果可作为脚本参考<br>
-    · 支持中文/英文自动识别<br>
-    · 需要 OpenAI API Key（Whisper）
-  </div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+  <div style="width:3px;height:20px;border-radius:2px;background:#10B981;flex-shrink:0;"></div>
+  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:#10B981;">VIRA INSIGHTS</span>
+  <span style="font-size:15px;font-weight:700;color:#E2E8F0;">我的爆款归因</span>
 </div>""", unsafe_allow_html=True)
+    st.markdown(
+        "上传你自己发过的**爆款内容截图**（播放量高/转化好的），"
+        "VIRA 分析它们的共同规律，告诉你**你的品牌专属爆款公式**。"
+    )
+    st.info("💡 建议上传 3-5 张，越多越准确。本次会话有效，刷新后需重新上传。")
 
-        if _vid_file:
-            _vid_raw = _vid_file.read()
-            _vid_size_mb = len(_vid_raw) / 1024 / 1024
-            if _vid_size_mb > 50:
-                st.warning(f"⚠️ 文件过大（{_vid_size_mb:.1f} MB），建议压缩后上传")
-            else:
-                st.markdown(
-                    f'<div style="font-size:12px;color:#7C8FA6;margin:6px 0;">'
-                    f'已载入：{_vid_file.name} · {_vid_size_mb:.1f} MB</div>',
-                    unsafe_allow_html=True,
-                )
-                if not st.session_state.api_key:
-                    st.error("⚠️ 服务配置异常，请联系管理员")
-                else:
-                    _lang_opt = st.selectbox(
-                        "语言（留空自动检测）",
-                        ["自动检测", "中文 (zh)", "英文 (en)", "日文 (ja)"],
-                        key="whisper_lang",
-                    )
-                    _lang_map = {
-                        "自动检测": None, "中文 (zh)": "zh",
-                        "英文 (en)": "en", "日文 (ja)": "ja",
-                    }
-                    if st.button("🎙 提取口播文案", key="run_transcript", type="primary"):
-                        with st.spinner("Whisper 转录中..."):
-                            from services.transcript import extract_transcript
-                            _tr = extract_transcript(
-                                file_bytes=_vid_raw,
-                                filename=_vid_file.name,
-                                api_key=st.session_state.api_key,
-                                language=_lang_map[_lang_opt],
-                            )
-                            st.session_state.transcript_result   = _tr
-                            st.session_state.transcript_filename = _vid_file.name
+    _attr_files = st.file_uploader(
+        "上传你的爆款内容截图",
+        type=["jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=True,
+        key="my_content_uploader",
+        help="可以是抖音/小红书/视频号截图，建议选播放量最高或转化最好的内容",
+    )
 
-                    _tr_res = st.session_state.get("transcript_result")
-                    if _tr_res:
-                        if _tr_res["error"]:
-                            st.error(f"转录失败：{_tr_res['error']}")
-                        else:
-                            _dur = (
-                                f"时长 {_tr_res['duration_s']}s · "
-                                if _tr_res["duration_s"] > 0 else ""
-                            )
-                            st.success(
-                                f"✅ 转录完成 · {_dur}语言：{_tr_res['language']} · "
-                                f"方式：{_tr_res['method']}"
-                            )
-                            st.markdown(
-                                f'<div class="glass" style="padding:14px 18px;margin-top:8px;">'
-                                f'<div style="font-family:\'DM Mono\',monospace;font-size:9px;'
-                                f'letter-spacing:.15em;color:#A855F7;margin-bottom:8px;">'
-                                f'// 口播文案 · {st.session_state.transcript_filename}</div>'
-                                f'<div style="font-size:13px;color:#E2E8F0;line-height:1.85;'
-                                f'white-space:pre-wrap;">{_tr_res["transcript"]}</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                            # 提供复制 / 写入 RAG 两个操作
-                            _ta1, _ta2 = st.columns(2)
-                            with _ta1:
-                                st.download_button(
-                                    "⬇️ 下载转录文本",
-                                    data=_tr_res["transcript"],
-                                    file_name=Path(st.session_state.transcript_filename).stem + "_transcript.txt",
-                                    mime="text/plain",
-                                    use_container_width=True,
-                                )
-                            with _ta2:
-                                if st.button("📚 写入 RAG 知识库", use_container_width=True, key="transcript_to_rag"):
-                                    st.session_state.rag_text += (
-                                        f"\n\n【竞品口播 · {st.session_state.transcript_filename}】\n"
-                                        + _tr_res["transcript"]
-                                    )
-                                    st.toast("已追加到 RAG 知识库 ✓", icon="📚")
-
-    up_col, tip_col = st.columns([2, 1])
-
-    with up_col:
-        # ── 多图上传（accept_multiple_files=True）────────────────────────────
-        uploaded_files = st.file_uploader(
-            "支持 JPG · PNG · WebP（≤ 20 MB · 可多选）",
-            type=ALLOWED_TYPES,
-            accept_multiple_files=True,
-            label_visibility="collapsed",
+    with st.expander("补充信息（选填，让分析更准确）"):
+        _attr_platform = st.selectbox(
+            "主要发布平台",
+            ["抖音", "小红书", "视频号", "TikTok", "快手"],
+            key="my_platform",
+        )
+        _attr_category = st.text_input(
+            "内容品类",
+            placeholder="如：美妆测评、3C开箱、食品种草",
+            key="my_category",
+        )
+        _attr_goal = st.selectbox(
+            "这些内容的主要目标",
+            ["涨粉", "带货转化", "品牌曝光", "直播引流"],
+            key="my_goal",
         )
 
-    with tip_col:
+    if _attr_files:
+        st.markdown(f"已上传 **{len(_attr_files)}** 张，建议 3-5 张效果最佳")
+        if not get_api_key():
+            st.warning("请先在侧边栏配置 OpenAI API Key 后再进行分析")
+        elif st.button(
+            "🔍 分析我的爆款规律",
+            key="analyze_my_content",
+            type="primary",
+        ):
+            with st.spinner("正在分析你的爆款内容，提炼专属规律..."):
+                _ar_new = _run_attribution_analysis(
+                    _attr_files,
+                    st.session_state.get("my_platform", "抖音"),
+                    st.session_state.get("my_category", ""),
+                    st.session_state.get("my_goal", "涨粉"),
+                )
+            if _ar_new:
+                st.session_state["_attribution_result"] = _ar_new
+                st.rerun()
+    else:
         st.markdown("""
-<div class="glass" style="border-left:2px solid var(--bl);">
-  <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;
-              color:var(--bl);margin-bottom:10px;">// 使用建议</div>
-  <div style="font-size:12px;color:var(--t1);line-height:1.85;">
-    · 可上传多张截图，点击选中一张分析<br>
-    · 建议截取视频开场、高潮、CTA 等节点<br>
-    · 截图需清晰可见文字和主体画面<br>
-    · 分辨率越高，AI 分析越精准
+<div style="background:rgba(16,185,129,.05);border:1px dashed rgba(16,185,129,.25);
+            border-radius:12px;padding:32px 24px;text-align:center;margin-top:16px;">
+  <div style="font-size:2rem;margin-bottom:8px;">📸</div>
+  <div style="font-size:14px;color:#94A3B8;margin-bottom:4px;">
+    上传你的爆款截图，VIRA 帮你拆解成功规律
   </div>
-  <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06);
-              font-size:11px;color:var(--t2);">
-    支持 JPG · PNG · WebP · 单张 ≤ 20 MB
+  <div style="font-size:12px;color:#64748B;">
+    抖音 · 小红书 · 视频号 截图均支持，播放量越高越有参考价值
   </div>
-</div>""", unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
-    # ── 多图校验、缩略图网格、帧选择 ────────────────────────────────────────
-    if uploaded_files:
-        # 初始化帧选择 session state
-        if "selected_frame_idx" not in st.session_state:
-            st.session_state.selected_frame_idx = 0
+    if st.session_state.get("_attribution_result"):
+        _ar = st.session_state["_attribution_result"]
+        st.markdown('<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:16px 0;">', unsafe_allow_html=True)
+        st.success("✅ 分析完成，找到你的爆款规律")
 
-        # 逐一校验所有上传文件
-        valid_frames: list[tuple[str, bytes, Any]] = []
-        for uf in uploaded_files:
-            ext = Path(uf.name).suffix.lower().lstrip(".")
-            if ext not in ALLOWED_TYPES:
-                st.warning(f"⚠️ 已跳过不支持的文件：{uf.name}")
-                continue
-            raw = uf.read()
-            if len(raw) > MAX_FILE_BYTES:
-                st.warning(f"⚠️ 已跳过超大文件：{uf.name}（{len(raw)//1024//1024}MB）")
-                continue
-            try:
-                img_obj = Image.open(io.BytesIO(raw))
-                img_obj.verify()
-                img_obj = Image.open(io.BytesIO(raw))
-                valid_frames.append((uf.name, raw, img_obj))
-            except Exception:
-                st.warning(f"⚠️ 已跳过损坏文件：{uf.name}")
+        st.markdown("### 🎯 你的品牌爆款公式")
+        for _aformula in _ar.get("brand_formulas", []):
+            with st.container():
+                st.markdown(f"**{_aformula.get('formula_name', '公式')}**")
+                if _aformula.get('formula_desc'):
+                    st.markdown(_aformula['formula_desc'])
+                st.code(_aformula.get('template', ''), language=None)
 
-        if not valid_frames:
-            st.error("❌ 没有可用的图片，请重新上传。")
-            st.stop()
+        st.markdown("### 💡 下一条内容怎么做")
+        st.info(_ar.get("next_content_suggestion", "—"))
 
-        # ── 帧缩略图网格（仿 HTML 里的 Mock Screen 帧选择区）────────────────
-        n = len(valid_frames)
-        # 确保 selected_frame_idx 不越界
-        if st.session_state.selected_frame_idx >= n:
-            st.session_state.selected_frame_idx = 0
-
-        st.markdown(f"""
-<div style="display:flex;align-items:center;gap:12px;margin:16px 0 10px;flex-wrap:wrap;">
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:var(--t2);">
-    // 已载入 {n} 帧
-  </span>
-  <span style="font-size:11px;color:var(--t1);">
-    · 点击按钮将一键分析全部帧
-  </span>
-  <span style="font-family:'DM Mono',monospace;font-size:9px;padding:2px 8px;border-radius:4px;
-               background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.28);
-               color:#818CF8;letter-spacing:.08em;">批量并发分析 · 每帧独立出报告</span>
-</div>""", unsafe_allow_html=True)
-
-        # 每行最多 4 列
-        cols_per_row = min(n, 4)
-        frame_cols = st.columns(cols_per_row)
-        for i, (fname, raw_b, img_obj) in enumerate(valid_frames):
-            col = frame_cols[i % cols_per_row]
-            with col:
-                is_selected = (i == st.session_state.selected_frame_idx)
-                # 选中帧用橙色边框高亮（冷暖对撞，强视觉焦点）
-                border_style = (
-                    "border:2px solid #FF6000;box-shadow:0 0 18px rgba(255,96,0,.45);"
-                    if is_selected else
-                    "border:1px solid rgba(139,92,246,.14);"
-                )
-                st.markdown(
-                    f'<div style="{border_style}border-radius:10px;overflow:hidden;'
-                    f'margin-bottom:6px;cursor:pointer;transition:all .2s;">',
-                    unsafe_allow_html=True
-                )
-                st.image(img_obj, use_container_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-                frame_label = f"F{i+1} · {fname[:14]}{'…' if len(fname)>14 else ''}"
-                if is_selected:
+        with st.expander("📋 查看完整规律分析"):
+            _ar_c1, _ar_c2 = st.columns(2)
+            with _ar_c1:
+                st.markdown("**Hook 规律**")
+                for _ahook in _ar.get("hook_patterns", []):
                     st.markdown(
-                        f'<div style="text-align:center;font-family:\'DM Mono\',monospace;'
-                        f'font-size:10px;color:#FF6000;font-weight:700;margin-bottom:4px;">'
-                        f'▶ {frame_label}</div>',
-                        unsafe_allow_html=True
+                        f"- {_ahook.get('type','—')}（{_ahook.get('frequency','—')}）：{_ahook.get('example','')}"
                     )
-                else:
-                    if st.button(f"选 F{i+1}", key=f"sel_frame_{i}", use_container_width=True):
-                        st.session_state.selected_frame_idx = i
-                        st.rerun()
+                st.markdown("")
+                st.markdown("**视觉规律**")
+                for _avis in _ar.get("visual_patterns", []):
+                    st.markdown(f"- {_avis}")
+            with _ar_c2:
+                st.markdown("**内容结构**")
+                st.markdown(_ar.get("content_structure", "—"))
+                st.markdown("")
+                st.markdown("**语言风格**")
+                for _alang in _ar.get("language_style", []):
+                    st.markdown(f"- {_alang}")
+                st.markdown("")
+                st.markdown("**差异化优势**")
+                st.markdown(_ar.get("unique_advantage", "—"))
 
-        # 当前选中帧
-        sel_name, sel_bytes, sel_img = valid_frames[st.session_state.selected_frame_idx]
-        st.session_state.image_data = sel_bytes
-        st.session_state.image_name = sel_name
+        _conf_raw = _ar.get("confidence", "中")
+        _conf_emoji = "✅" if _conf_raw.startswith("高") else ("⚠️" if _conf_raw.startswith("低") else "ℹ️")
+        st.caption(f"{_conf_emoji} 分析置信度：{_conf_raw}")
 
-        # 待分析帧列表信息行
-        _names_preview = "、".join(f[0][:12] for f in valid_frames[:4])
-        if n > 4:
-            _names_preview += f" 等{n}张"
-        st.markdown(
-            f'<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.22);'
-            f'border-radius:10px;padding:10px 16px;margin:10px 0 16px;'
-            f'font-size:12px;color:#E2E8F0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-            f'<span style="color:#818CF8;font-weight:700;">▶ 待分析：</span>'
-            f'<span style="font-family:\'DM Mono\',monospace;color:#7C8FA6;">{_names_preview}</span>'
-            f'<span style="color:#3D4F68;">· 共 {n} 张，点击下方按钮开始</span>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+        if st.button("📌 将爆款规律加入品牌知识库（会话级）", key="save_attribution_to_kb"):
+            _formula_parts = [
+                f"{_f.get('formula_name','公式')}：{_f.get('template','')}"
+                for _f in _ar.get("brand_formulas", [])
+            ]
+            st.session_state["my_brand_formulas"] = "\n".join(_formula_parts)
+            st.success("✅ 已加入！下次竞品分析时，Agent 2 会自动参考你的爆款规律生成脚本。")
 
-        # ── 兼容单图路径：把 uploaded 变量指向选中帧 ────────────────────────
-        uploaded = True   # 保持后续逻辑正常触发
+# ── Tab 1：竞品分析（以下三个 with 块共同组成内容，Streamlit 支持重开同一 tab context）
 
-        if not st.session_state.api_key:
-            st.error("⚠️ 服务配置异常，请联系管理员")
-        else:
-            # ── 额度检查（总报告份数 + 今日素材条数）────────────────────────
-            _cur_email = (st.session_state.get("user_info") or {}).get("email", "")
-            try:
-                from services.auth import get_credits as _gc, get_daily_status as _gds
-                _cur_credits  = _gc(_cur_email)  if _cur_email else 0
-                _daily_status = _gds(_cur_email) if _cur_email else {}
-            except Exception:
-                _cur_credits  = 1
-                _daily_status = {"blocked": False, "daily_used": 0,
-                                 "daily_limit": 3, "remaining": 3, "is_pro": False}
+with _tab_comp:
+    # ── 指标大屏（仅在有分析结果时显示）─────────────────────────────────────────
+    wf = st.session_state.workflow_result
+    if wf:
+        st.markdown("""
+    <div style="padding:28px 0 14px;">
+      <div class="slbl">实时分析仪表盘</div>
+    </div>""", unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("HOOK 吸睛指数",   f"{_safe(wf,'visual','data','hook_score')}/100",    help="Agent 1 · Hook 质量评分")
+        m2.metric("带货转化潜力",     f"{_safe(wf,'commerce','data','conversion_potential')}/100", help="Agent 2 · 商业转化潜力")
+        m3.metric("合规风险等级",     str(_safe(wf,"compliance","data","risk_level")),     help="Agent 3 · LOW / MEDIUM / HIGH")
+        m4.metric("成功置信度",       f"{_safe(wf,'strategy','data','confidence_score')}/100", help="Agent 4 · 复刻成功综合置信度")
+        st.markdown('<hr class="vira-hr" style="margin:20px 0;">', unsafe_allow_html=True)
 
-            _is_pro        = _daily_status.get("is_pro", False)
-            _daily_blocked = _daily_status.get("blocked", False)
-            _no_credits    = (not _is_pro) and (_cur_credits <= 0)
-            _blocked       = _no_credits or _daily_blocked
 
-            # ── 无报告额度：升级弹窗 ──────────────────────────────────────
-            if _no_credits:
-                st.markdown("""
-<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.18);
-            border-radius:14px;padding:20px 22px;margin:4px 0 12px;">
-  <div style="font-size:15px;font-weight:800;color:#E2E8F0;margin-bottom:4px;">
-    🔒 免费报告额度已用完
-  </div>
-  <div style="font-size:12px;color:#64748B;margin-bottom:16px;">
-    升级 Pro · 每日最多分析 <b style="color:#A78BFA;">30 条</b>竞品素材，无限生成爆款脚本
-  </div>
-  <a href="mailto:hi@vira.ai?subject=申请订阅VIRA Pro&body=我想订阅VIRA Pro，请联系我。"
-     style="display:block;text-align:center;background:linear-gradient(135deg,#6366F1,#A855F7);
-            color:#fff;font-size:13px;font-weight:700;padding:11px 0;border-radius:9px;
-            text-decoration:none;letter-spacing:.03em;margin-bottom:6px;">
-    ✨ 升级 VIRA Pro →
-  </a>
-  <div style="font-size:10px;color:#3D4F68;text-align:center;margin-bottom:14px;">
-    发送后我们会在 24h 内联系你
-  </div>
-</div>""", unsafe_allow_html=True)
-                with st.expander("有礼品码？点击兑换", expanded=False):
-                    _gift_input = st.text_input(
-                        "输入 6 位礼品码",
-                        placeholder="如：A3F9K2",
-                        max_chars=8,
-                        label_visibility="collapsed",
-                        key="gift_code_input",
-                    )
-                    if st.button("兑换", key="redeem_gift_btn", use_container_width=True):
-                        if _gift_input.strip():
-                            try:
-                                from services.auth import redeem_gift_code as _redeem
-                                _ok, _rmsg, _new_c = _redeem(_cur_email, _gift_input.strip())
-                                if _ok:
-                                    st.success(_rmsg)
-                                    if st.session_state.get("user_info"):
-                                        st.session_state.user_info["credits"] = _new_c
-                                    st.rerun()
-                                else:
-                                    st.error(_rmsg)
-                            except Exception as _re:
-                                st.error(f"兑换失败：{_re}")
-                        else:
-                            st.warning("请输入礼品码")
+    # ══════════════════════════════════════════════════════════════════════════════
 
-            # ── 今日素材上限已到（总额度还有，但今天用完了）────────────────
-            elif _daily_blocked:
-                _dl = _daily_status.get("daily_limit", 3)
-                _tier = "Pro · 每日 30 条" if _is_pro else "免费版 · 每日 3 条"
-                st.warning(
-                    f"⏰ 今日 {_tier} 素材分析额度已用完，明天零点自动重置。"
-                    + ("" if _is_pro else "  升级 Pro 可提升至每日 30 条。")
-                )
+with _tab_comp:
+    # 上传区域（未分析时显示）
+    # ══════════════════════════════════════════════════════════════════════════════
 
-            # ========== 🚀 批量分析核心执行逻辑 ==========
-            if st.button(f"🚀 启动分析（{n} 条竞品素材）", type="primary",
-                         use_container_width=True, disabled=_blocked):
-                _batch_new: list[dict] = []
+    ALLOWED_TYPES  = ["jpg", "jpeg", "png", "webp"]
+    MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB 硬限制
 
-                with st.status(f"🤖 VIRA 批量分析中（共 {n} 张）...", expanded=True) as status_ctx:
-                    _progress = st.progress(0, text="准备中...")
+    if not st.session_state.workflow_result:
+        # ── Agent 专家卡片展示组 ──────────────────────────────────────────────────
+        st.markdown("""
+    <div class="vira-sec">
+      <div class="slbl">AI 智能体</div>
+      <div class="vira-sec-sh cn">4个专家Agent<br>各司其职，协同出击</div>
+      <p class="vira-sec-sp">每个Agent都有专属的知识库和分析视角，结合在一起才是完整的判断。</p>
+    </div>
 
-                    for _img_idx, (_fname, _raw_b, _img_obj) in enumerate(valid_frames):
-                        # ── 当前帧标题 ────────────────────────────────────────
-                        st.markdown(
-                            f'<div style="font-size:11px;color:#818CF8;font-family:\'DM Mono\','
-                            f'monospace;margin:10px 0 4px;letter-spacing:.06em;">'
-                            f'▶ 第 {_img_idx+1}/{n} 张 · <span style="color:#E2E8F0;">{_fname}</span></div>',
-                            unsafe_allow_html=True,
-                        )
+    <div class="ag3col">
+      <!-- Agent 1 · 视觉拆解师 -->
+      <div class="agcard ag-cy">
+        <div class="agid" style="color:var(--cy)">
+          <div class="agdot" style="background:var(--cy)"></div>AGENT 1
+        </div>
+        <span class="agico">👁</span>
+        <div class="agname">视觉拆解师</div>
+        <div class="agsub">逐帧分析画面，比人眼更精准</div>
+        <div class="agdesc">分析前3秒Hook类型、画面色彩情绪、文字布局质量——和爆款规律知识库对比，给出 Hook 评分与视觉质量分。</div>
+        <div class="agtags">
+          <span class="agtag" style="border-color:rgba(56,189,248,.3);color:var(--cy)">Hook评分</span>
+          <span class="agtag" style="border-color:rgba(56,189,248,.3);color:var(--cy)">色彩情绪</span>
+          <span class="agtag" style="border-color:rgba(56,189,248,.3);color:var(--cy)">视觉质量</span>
+        </div>
+      </div>
 
-                        _sv  = st.empty()
-                        _sc  = st.empty()
-                        _sco = st.empty()
-                        _sst = st.empty()
+      <!-- Agent 3 · 合规排雷兵 -->
+      <div class="agcard ag-re">
+        <div class="agid" style="color:var(--re)">
+          <div class="agdot" style="background:var(--re)"></div>AGENT 3
+        </div>
+        <span class="agico">🛡</span>
+        <div class="agname">合规排雷兵</div>
+        <div class="agsub">发布前的最后一道防线</div>
+        <div class="agdesc">比对平台合规规则库（TikTok/抖音），精确识别极限用语、医疗声称、金融承诺等高风险内容，给出风险级别和修改建议。</div>
+        <div class="agtags">
+          <span class="agtag" style="border-color:rgba(255,61,85,.3);color:var(--re)">违规词检测</span>
+          <span class="agtag" style="border-color:rgba(255,61,85,.3);color:var(--re)">风险分级</span>
+          <span class="agtag" style="border-color:rgba(255,61,85,.3);color:var(--re)">修改建议</span>
+        </div>
+      </div>
 
-                        _sv.markdown(
-                            '<span class="badge b-run">AGENT 1 · 视觉拆解师 → 分析中</span>',
-                            unsafe_allow_html=True)
-                        _sc.markdown(
-                            '<span class="badge b-run">AGENT 3 · 合规排雷兵 → 分析中</span>',
-                            unsafe_allow_html=True)
-                        _sco.markdown(
-                            '<span class="badge b-wait">AGENT 2 · 转化精算师 → 等待视觉结果...</span>',
-                            unsafe_allow_html=True)
-                        _sst.markdown(
-                            '<span class="badge b-wait">AGENT 4 · 策略执行官 → 等待三路汇总...</span>',
-                            unsafe_allow_html=True)
+      <!-- Agent 2 · 转化精算师 -->
+      <div class="agcard ag-pu">
+        <div class="agid" style="color:var(--pu)">
+          <div class="agdot" style="background:var(--pu)"></div>AGENT 2
+        </div>
+        <span class="agico">📈</span>
+        <div class="agname">转化精算师</div>
+        <div class="agsub">RAG知识库增强，生成3套改版脚本</div>
+        <div class="agdesc">结合视觉分析结果与品牌知识库，评估病毒传播潜力与商业转化潜力，输出3套可直接执行的重构脚本。</div>
+        <div class="agtags">
+          <span class="agtag" style="border-color:rgba(168,85,247,.3);color:var(--pu)">病毒预测</span>
+          <span class="agtag" style="border-color:rgba(168,85,247,.3);color:var(--pu)">RAG增强</span>
+          <span class="agtag" style="border-color:rgba(168,85,247,.3);color:var(--pu)">脚本重构</span>
+        </div>
+      </div>
+    </div>
 
-                        # 利用默认参数将当前帧的槽位绑定到回调（避免闭包陷阱）
-                        def _on_done_batch(key: str, r,
-                                           sv=_sv, sc=_sc, sco=_sco, sst=_sst):
-                            ok  = r.success
-                            cls = "b-done" if ok else "b-err"
-                            tag = "✅ 完成" if ok else "❌ 失败"
-                            _labels = {
-                                "visual":     f"AGENT 1 · 视觉拆解师 → {tag}",
-                                "compliance": f"AGENT 3 · 合规排雷兵 → {tag}",
-                                "commerce":   f"AGENT 2 · 转化精算师 → {tag}",
-                                "strategy":   f"AGENT 4 · 策略执行官 → {tag}",
-                            }
-                            _slots = {
-                                "visual": sv, "compliance": sc,
-                                "commerce": sco, "strategy": sst,
-                            }
-                            if key in _slots:
-                                _slots[key].markdown(
-                                    f'<span class="badge {cls}">{_labels[key]}</span>',
-                                    unsafe_allow_html=True)
-                            if key == "commerce" and ok:
-                                sst.markdown(
-                                    '<span class="badge b-run">AGENT 4 · 策略执行官 → 汇总决策中...</span>',
-                                    unsafe_allow_html=True)
+    <!-- Agent 4 · 策略执行官 全宽卡 -->
+    <div class="agd" style="margin-bottom:24px;">
+      <div class="agd-inner">
+        <div class="agd-left">
+          <div class="agid" style="color:var(--bl)">
+            <div class="agdot" style="background:var(--bl)"></div>AGENT 4 · 综合汇总
+          </div>
+          <span class="agico" style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;font-size:.85em;letter-spacing:-.02em;">V</span>
+          <div class="agname">策略执行官</div>
+          <div class="agsub" style="color:var(--t1)">读取 A1+A2+A3 全部结果，输出最终战略裁决</div>
+          <div class="agdesc">综合三个专家Agent的分析，给出成功置信度评分（0-100）、A/B Test 实验方案设计，以及前3秒改法、视觉升级点、文案优化方向的完整改版指令。</div>
+        </div>
+        <div class="agd-right">
+          <div class="dout-lbl">OUTPUT EXAMPLE</div>
+          <div class="dgrade-row">
+            <div class="dgrade-box">A</div>
+            <div class="dgrade-info"><strong>置信度 88/100 · 强烈建议复刻</strong><br>改版后预计 +24% 完播率</div>
+          </div>
+          <div class="dreco">A/B Test 方案：将第2秒文字换为反常识结论式开场，删除<strong>"最佳"等极限词</strong>，在视频第8秒增加利益点强化留存……</div>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-                        try:
-                            _wfl = _workflow(st.session_state.rag_text)
-                            _wf_result = _wfl.run(_raw_b, on_agent_complete=_on_done_batch)
-                            _batch_new.append({
-                                "name":       _fname,
-                                "image_data": _raw_b,
-                                "result":     _wf_result,
-                            })
+        st.markdown("""
+    <hr class="vira-hr">
+    <div class="vira-sec">
+      <div class="slbl">开始分析</div>
+      <div class="vira-sec-sh cn">上传竞品截图<br>启动四 Agent 生成专属脚本</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-                            # 保存历史记录
-                            if _wf_result and (_wf_result.success or _wf_result.visual):
-                                try:
-                                    _history_store().save(
-                                        session_id = st.session_state.session_id,
-                                        image_name = _fname,
-                                        wf_result  = _wf_result,
-                                    )
-                                except Exception as _he:
-                                    logger.warning("History save failed: %s", _he)
+        # (视频口播提取已移入 Tab 2，见下方)
 
-                        except Exception as _e:
-                            logger.error("Batch workflow error for %s: %s", _fname, _e, exc_info=True)
-                            _batch_new.append({
-                                "name":       _fname,
-                                "image_data": _raw_b,
-                                "result":     None,
-                            })
-                            _sv.markdown('<span class="badge b-err">AGENT 1 · 视觉拆解师 → ❌ 异常</span>', unsafe_allow_html=True)
-                            _sc.markdown('<span class="badge b-err">AGENT 3 · 合规排雷兵 → ❌ 异常</span>', unsafe_allow_html=True)
+        # ── 品牌知识库：载入 + 首次引导 + 信息条 ─────────────────────────────────
+        _load_brand_profile_if_needed()
+        _cur_email = (st.session_state.get("user_info") or {}).get("email", "")
 
-                        _progress.progress(
-                            (_img_idx + 1) / n,
-                            text=f"{_img_idx + 1}/{n} 完成"
-                        )
-
-                    _total_ok = sum(1 for b in _batch_new if b["result"] and b["result"].success)
-                    status_ctx.update(
-                        label=f"✅ 批量分析完成！{_total_ok}/{n} 成功",
-                        state="complete" if _total_ok > 0 else "error",
-                    )
-
-                # ── 写入 session state，跳转到结果页 ─────────────────────────
-                st.session_state.batch_results = _batch_new
-                if _batch_new:
-                    _first = next(
-                        (b for b in _batch_new if b["result"] and b["result"].success),
-                        _batch_new[0],
-                    )
-                    st.session_state.workflow_result = _first["result"]
-                    st.session_state.image_name      = _first["name"]
-                    st.session_state.image_data      = _first["image_data"]
-
-                # ── 扣减报告额度 + 累加今日素材计数 ──────────────────────
-                _ok_count = sum(1 for b in _batch_new if b["result"] and b["result"].success)
-                if _ok_count > 0 and _cur_email:
-                    try:
-                        from services.auth import deduct_credit as _dc, increment_daily as _id
-                        _deduct_ok, _remain = _dc(_cur_email)
-                        if _deduct_ok and st.session_state.get("user_info"):
-                            st.session_state.user_info["credits"] = _remain
-                        _id(_cur_email)  # 日计数 +1（内部自动处理跨天重置）
-                    except Exception:
-                        pass
+        # 首次上传引导：若未填写过品牌知识库，进入 onboard 模式
+        if (
+            st.session_state.brand_kb_mode == ""
+            and not st.session_state.brand_profile
+            and not st.session_state.get("brand_kb_onboard_dismissed")
+        ):
+            st.markdown("""
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);
+                border-radius:12px;padding:16px 20px;margin-bottom:16px;">
+      <div style="font-size:.9rem;font-weight:600;color:#C7D2FE;margin-bottom:6px;">
+        ✦ 填写品牌知识库，生成专属脚本
+      </div>
+      <div style="font-size:.8rem;color:#94A3B8;margin-bottom:12px;">
+        告诉 VIRA 你的品牌信息，转化精算师将生成完全符合你品牌调性的拍摄脚本，而非通用模板。
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+            _ob_c1, _ob_c2 = st.columns([2, 1])
+            if _ob_c1.button("📋 填写品牌知识库（推荐）", use_container_width=True, type="primary"):
+                st.session_state.brand_kb_mode = "onboard"
+                st.session_state.brand_kb_step = 1
+                st.rerun()
+            if _ob_c2.button("暂时跳过，用通用模式", use_container_width=True):
+                st.session_state.brand_kb_onboard_dismissed = True
                 st.rerun()
 
+        # 已填写：显示品牌信息条
+        elif st.session_state.brand_profile:
+            _bp = st.session_state.brand_profile
+            _tone_tags = " · ".join(_bp.get("tone") or []) or "通用"
+            _bname     = _bp.get("brand_name") or "未命名品牌"
+            _bcat      = _bp.get("category") or "—"
+            _c_bar, _c_edit, _c_switch = st.columns([6, 1, 1])
+            _c_bar.markdown(
+                f'<div class="bkb-brand-bar">'
+                f'<span class="brand-label">当前品牌</span>'
+                f'<span class="brand-detail">{_bname} · {_bcat} · {_tone_tags}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if _c_edit.button("✏️ 修改", use_container_width=True, key="bkb_edit_btn"):
+                st.session_state.brand_kb_mode = "edit"
+                st.session_state.brand_kb_step = 1
+                st.rerun()
+            if _c_switch.button("🔀 切换", use_container_width=True, key="bkb_switch_btn"):
+                st.session_state.brand_kb_mode = "switch"
+                st.rerun()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 结果展示区域
-# ══════════════════════════════════════════════════════════════════════════════
+        # 品牌知识库表单（onboard / edit / switch）
+        if st.session_state.brand_kb_mode in ("onboard", "edit", "switch"):
+            with st.container():
+                done = _render_brand_kb_form()
+                if done:
+                    st.rerun()
+            st.stop()
 
-if st.session_state.workflow_result:
-    wf = st.session_state.workflow_result
-
-    # ── 结果页顶部操作栏（返回按钮 + 分析信息）──────────────────────────────
-    st.markdown(f"""
-<div style="display:flex;align-items:center;justify-content:space-between;
-            padding:16px 0 8px;border-bottom:1px solid rgba(255,255,255,.06);
-            margin-bottom:4px;">
-  <div style="display:flex;align-items:center;gap:12px;">
-    <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;
-                color:#3D4F68;">// 分析结果</div>
-    <div style="font-size:13px;color:#E2E8F0;font-weight:600;">
-      {st.session_state.image_name or '未知文件'}
-    </div>
-    <div style="font-family:'DM Mono',monospace;font-size:10px;color:#3D4F68;">
-      {wf.total_tokens:,} tokens · {wf.total_elapsed_ms}ms
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-    back_col, export_col, _ = st.columns([1, 1, 4])
-    with back_col:
-        if st.button("← 重新分析", key="back_to_upload"):
-            for k in ("workflow_result", "image_data", "chat_history", "feedback_done"):
-                st.session_state[k] = (
-                    None if k not in ("chat_history", "feedback_done")
-                    else ([] if k == "chat_history" else set())
-                )
-            st.session_state.batch_results    = []
-            st.session_state.synthesis_result  = None
-            st.session_state.selected_frame_idx = 0
-            st.rerun()
-
-    with export_col:
-        # ── 导出完整报告 ─────────────────────────────────────────────────────
-        from services.report_generator import build_markdown, build_pdf
-        _md_report = build_markdown(
-            wf           = wf,
-            image_name   = st.session_state.image_name,
-            synthesis    = st.session_state.get("synthesis_result"),
-            transcript   = (
-                st.session_state.get("transcript_result", {}) or {}
-            ).get("transcript", ""),
-            user_email   = (st.session_state.get("user_info") or {}).get("email", ""),
+        # ── 口味调节器：脚本风格偏好（上传区之前，分析按钮读取）───────────────────────
+        st.markdown(
+            '<hr class="vira-hr" style="margin:8px 0 14px;">',
+            unsafe_allow_html=True,
         )
-        _pdf_bytes = build_pdf(_md_report)
-        _report_stem = Path(st.session_state.image_name or "report").stem
-
-        if _pdf_bytes:
-            st.download_button(
-                "⬇️ 导出 PDF",
-                data=_pdf_bytes,
-                file_name=f"VIRA_{_report_stem}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                key="export_pdf",
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+            '<span style="font-size:15px;">🎛</span>'
+            '<span style="font-size:14px;font-weight:700;color:#E2E8F0;">脚本风格偏好</span>'
+            '<span style="font-size:11px;color:#4B5563;margin-left:4px;">选填 · 不设置则使用默认风格</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _sp_col1, _sp_col2 = st.columns(2)
+        with _sp_col1:
+            _style_tone = st.select_slider(
+                "语言风格",
+                options=["很正式", "偏正式", "中性", "偏接地气", "很接地气"],
+                value="中性",
+                key="style_tone",
             )
-        else:
-            st.download_button(
-                "⬇️ 导出 Markdown",
-                data=_md_report.encode("utf-8"),
-                file_name=f"VIRA_{_report_stem}.md",
-                mime="text/markdown",
-                use_container_width=True,
-                key="export_md",
+        with _sp_col2:
+            _script_length = st.select_slider(
+                "脚本长度",
+                options=["极简（15s）", "简短（30s）", "标准（60s）", "详细（90s）"],
+                value="标准（60s）",
+                key="script_length",
+            )
+        _creator_type = st.selectbox(
+            "发给哪类达人（可选）",
+            options=["不限", "素人/真实感达人", "专业测评类达人",
+                     "剧情创意类达人", "知识科普类达人", "直播带货达人"],
+            index=0,
+            key="creator_type",
+        )
+        st.session_state["style_prefs"] = {
+            "tone":    _style_tone,
+            "length":  _script_length,
+            "creator": _creator_type,
+        }
+        st.markdown(
+            '<hr class="vira-hr" style="margin:14px 0 8px;">',
+            unsafe_allow_html=True,
+        )
+
+        # ══════════════════════════════════════════════════════════════════════════
+        # 上传区 Tab 切换
+        # ══════════════════════════════════════════════════════════════════════════
+        _tab_img, _tab_url, _tab_vid = st.tabs([
+            "📷  上传截图",
+            "🔗  粘贴链接",
+            "🎬  上传视频  ·  即将上线",
+        ])
+
+        # ── Tab 1：截图上传（主推）────────────────────────────────────────────────
+        with _tab_img:
+
+            uploaded_files = st.file_uploader(
+                "拖拽竞品截图到这里，或点击选择（JPG · PNG · WebP · 最多 9 张）",
+                type=ALLOWED_TYPES,
+                accept_multiple_files=True,
+                key="img_uploader_main",
+            )
+            st.markdown(
+                '<div style="font-size:10px;color:#374151;text-align:center;margin:-6px 0 10px;">'
+                '⌘ / Ctrl + V 可直接粘贴截图 &nbsp;·&nbsp; 拖拽多张一次上传'
+                '</div>',
+                unsafe_allow_html=True,
             )
 
-    # ── 批量结果导航（仅当批量分析了多张时显示）────────────────────────────────
-    _batch_stored = st.session_state.get("batch_results", [])
-    if len(_batch_stored) > 1:
-        st.markdown(f"""
-<div style="margin:16px 0 10px;">
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.18em;color:#818CF8;">
-    // 批量结果导航 · {len(_batch_stored)} 张图片
-  </span>
-  <span style="font-size:11px;color:#7C8FA6;margin-left:10px;">点击切换查看各图详细报告</span>
-</div>""", unsafe_allow_html=True)
+            # 清理软删除记录（新上传文件集合之外的文件名）
+            if uploaded_files is not None:
+                _cur_fnames = {uf.name for uf in uploaded_files}
+                st.session_state.upload_excluded = {
+                    fn for fn in st.session_state.upload_excluded
+                    if fn in _cur_fnames
+                }
 
-        _nav_cols = st.columns(min(len(_batch_stored), 4))
-        for _bi, _bitem in enumerate(_batch_stored):
-            _br       = _bitem.get("result")
-            _is_cur   = (_bitem["name"] == st.session_state.image_name)
-            _conf     = (
-                _br.strategy.data.get("confidence_score", "?")
-                if _br and _br.strategy and _br.strategy.success else "?"
-            )
-            _risk     = (
-                _br.compliance.data.get("risk_level", "?")
-                if _br and _br.compliance and _br.compliance.success else "?"
-            )
-            _risk_clr = {"LOW": "#00C97A", "MEDIUM": "#F0A500", "HIGH": "#FF3D55"}.get(
-                str(_risk), "#7C8FA6"
-            )
-            _border   = (
-                "border:2px solid #6366F1;box-shadow:0 0 16px rgba(99,102,241,.35);"
-                if _is_cur else
-                "border:1px solid rgba(139,92,246,.18);"
-            )
-            _short = _bitem["name"][:16] + ("…" if len(_bitem["name"]) > 16 else "")
+            if uploaded_files:
+                if len(uploaded_files) > 9:
+                    st.warning("⚠️ 最多支持 9 张，已自动取前 9 张")
+                    uploaded_files = uploaded_files[:9]
 
-            with _nav_cols[_bi % 4]:
-                try:
-                    _nav_img = Image.open(io.BytesIO(_bitem["image_data"]))
-                    st.markdown(
-                        f'<div style="{_border}border-radius:8px;overflow:hidden;margin-bottom:4px;">',
-                        unsafe_allow_html=True,
-                    )
-                    st.image(_nav_img, use_container_width=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-                except Exception:
-                    pass
-
-                st.markdown(
-                    f'<div style="font-size:10px;font-family:\'DM Mono\',monospace;'
-                    f'color:{"#818CF8" if _is_cur else "#7C8FA6"};'
-                    f'margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">'
-                    f'{"▶ " if _is_cur else ""}{_short}</div>'
-                    f'<div style="font-size:10px;color:#3D4F68;margin-bottom:6px;">'
-                    f'置信 <span style="color:#818CF8;">{_conf}</span> · '
-                    f'<span style="color:{_risk_clr};">{_risk}</span></div>',
-                    unsafe_allow_html=True,
-                )
-                if not _is_cur:
-                    if st.button(f"查看", key=f"batch_nav_{_bi}", use_container_width=True):
-                        if _bitem["result"]:
-                            st.session_state.workflow_result = _bitem["result"]
-                            st.session_state.image_name      = _bitem["name"]
-                            st.session_state.image_data      = _bitem["image_data"]
-                            st.session_state.chat_history    = []
-                            st.session_state.feedback_done   = set()
-                            st.rerun()
-                        else:
-                            st.toast(f"⚠️ {_bitem['name']} 分析失败，无法查看", icon="❌")
-
-        # ── 爆款公式提炼按钮 ──────────────────────────────────────────────────
-        _syn_done = st.session_state.get("synthesis_result") is not None
-        _syn_label = "✅ 已提炼爆款公式" if _syn_done else f"🔬 提炼爆款公式（{len(_batch_stored)} 个样本）"
-        _s1, _s2, _s3 = st.columns([1, 2, 1])
-        with _s2:
-            if st.button(_syn_label, use_container_width=True, key="run_synthesis",
-                         disabled=(not st.session_state.api_key)):
-                with st.spinner("Agent 5 正在归纳爆款公式..."):
+                # ── 校验并构建 valid_frames（排除软删除）────────────────────────
+                valid_frames: list[tuple[str, bytes, Any]] = []
+                for uf in uploaded_files:
+                    if uf.name in st.session_state.upload_excluded:
+                        continue
+                    ext = Path(uf.name).suffix.lower().lstrip(".")
+                    if ext not in ALLOWED_TYPES:
+                        st.warning(f"⚠️ 已跳过不支持的文件：{uf.name}")
+                        continue
+                    raw = uf.read()
+                    if len(raw) > MAX_FILE_BYTES:
+                        st.warning(f"⚠️ 已跳过超大文件：{uf.name}（{len(raw)//1024//1024} MB）")
+                        continue
                     try:
-                        from core.synthesis_agent import SynthesisAgent
-                        _syn_client = _workflow(st.session_state.rag_text).client
-                        _syn_agent  = SynthesisAgent(_syn_client)
-                        st.session_state.synthesis_result = _syn_agent.run(_batch_stored)
-                        st.rerun()
-                    except Exception as _se:
-                        st.error(f"提炼失败：{_se}")
+                        img_obj = Image.open(io.BytesIO(raw))
+                        img_obj.verify()
+                        img_obj = Image.open(io.BytesIO(raw))
+                        valid_frames.append((uf.name, raw, img_obj))
+                    except Exception:
+                        st.warning(f"⚠️ 已跳过损坏文件：{uf.name}")
 
-        st.markdown('<hr class="vira-hr" style="margin:16px 0 8px;">', unsafe_allow_html=True)
-
-    # Agent 4 决策卡片（始终可见，置于 Tab 之上）
-    _render_strategy_card(wf)
-
-    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
-    _has_synthesis = st.session_state.get("synthesis_result") is not None
-    _tab_labels    = ["📊 分析报告", "📝 重构脚本", "🔧 开发者视图", "💬 智能问答"]
-    if _has_synthesis:
-        _tab_labels.insert(1, "🔬 爆款公式")
-    _tabs = st.tabs(_tab_labels)
-
-    if _has_synthesis:
-        tab_report, tab_synthesis, tab_scripts, tab_dev, tab_chat = _tabs
-    else:
-        tab_synthesis = None
-        tab_report, tab_scripts, tab_dev, tab_chat = _tabs
-
-    # ── Tab 1：分析报告 ────────────────────────────────────────────────────────
-    with tab_report:
-        st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-        col_v, col_c = st.columns([1, 1], gap="large")
-
-        with col_v:
-            st.markdown("""
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-  <div style="width:3px;height:20px;border-radius:2px;background:#38BDF8;flex-shrink:0;"></div>
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:#38BDF8;">AGENT 1</span>
-  <span style="font-size:15px;font-weight:700;color:#E2E8F0;">视觉拆解师</span>
-</div>""", unsafe_allow_html=True)
-            if wf.visual and wf.visual.success:
-                d = wf.visual.data
-                st.metric("Hook 类型", d.get("hook_type", "—"))
-                s1, s2 = st.columns(2)
-                s1.metric("Hook 评分", f"{d.get('hook_score','—')}/100")
-                s2.metric("视觉质量", f"{d.get('visual_score','—')}/100")
-                st.markdown(
-                    f'<div class="glass" style="margin-top:10px;">'
-                    f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                    f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 情绪基调</div>'
-                    f'<div style="color:#E2E8F0;font-size:13px;">{d.get("emotional_tone","—")}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-                st.markdown(
-                    f'<div class="glass">'
-                    f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                    f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 前3秒分析</div>'
-                    f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
-                    f'{d.get("first_3s_analysis","—")}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-                if d.get("key_visual_elements"):
-                    els = "".join(
-                        f'<div style="display:flex;align-items:center;gap:7px;'
-                        f'margin-bottom:5px;font-size:12px;color:#7C8FA6;">'
-                        f'<span style="color:#38BDF8;">·</span> {el}</div>'
-                        for el in d["key_visual_elements"]
-                    )
-                    st.markdown(
-                        f'<div class="glass"><div style="font-size:9px;font-family:\'DM Mono\','
-                        f'monospace;letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">'
-                        f'// 关键视觉元素</div>{els}</div>',
-                        unsafe_allow_html=True
-                    )
-                fk = f"v_{st.session_state.session_id}"
-                if fk not in st.session_state.feedback_done:
-                    fa, fb, _ = st.columns([1,1,6])
-                    if fa.button("👍", key="fv_up"):
-                        _feedback_store().save(1,"视觉拆解师",st.session_state.image_name,
-                            json.dumps(d,ensure_ascii=False),st.session_state.session_id)
-                        st.session_state.feedback_done.add(fk); st.toast("感谢！",icon="👍")
-                    if fb.button("👎", key="fv_dn"):
-                        _feedback_store().save(0,"视觉拆解师",st.session_state.image_name,
-                            json.dumps(d,ensure_ascii=False),st.session_state.session_id)
-                        st.session_state.feedback_done.add(fk); st.toast("Bad Case 已记录",icon="📌")
-            else:
-                st.error(f"Agent 1 失败: {wf.visual.error if wf.visual else '未运行'}")
-
-        with col_c:
-            st.markdown("""
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-  <div style="width:3px;height:20px;border-radius:2px;background:#FF3D55;flex-shrink:0;"></div>
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:#FF3D55;">AGENT 3</span>
-  <span style="font-size:15px;font-weight:700;color:#E2E8F0;">合规排雷兵</span>
-</div>""", unsafe_allow_html=True)
-            if wf.compliance and wf.compliance.success:
-                d    = wf.compliance.data
-                risk = d.get("risk_level","—")
-                risk_clr = {"LOW":"#00C97A","MEDIUM":"#F0A500","HIGH":"#FF3D55"}.get(risk,"#7C8FA6")
-                risk_bg  = {"LOW":"rgba(0,201,122,.1)","MEDIUM":"rgba(240,165,0,.1)",
-                            "HIGH":"rgba(255,61,85,.1)"}.get(risk,"rgba(255,255,255,.04)")
-                risk_bd  = {"LOW":"rgba(0,201,122,.3)","MEDIUM":"rgba(240,165,0,.3)",
-                            "HIGH":"rgba(255,61,85,.3)"}.get(risk,"rgba(255,255,255,.08)")
-                st.markdown(
-                    f'<div style="display:inline-flex;align-items:center;gap:8px;'
-                    f'background:{risk_bg};border:1px solid {risk_bd};border-radius:8px;'
-                    f'padding:8px 16px;margin-bottom:12px;">'
-                    f'<span style="font-family:\'DM Mono\',monospace;font-size:10px;'
-                    f'letter-spacing:.1em;color:#7C8FA6;">风险等级</span>'
-                    f'<span style="font-weight:800;font-size:14px;color:{risk_clr};">{risk}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-                st.metric("合规评分", f"{d.get('compliance_score','—')}/100")
-
-                if d.get("_risk_dict_categories"):
-                    st.markdown(
-                        f'<div style="font-size:10px;color:#3D4F68;font-family:\'DM Mono\','
-                        f'monospace;margin:6px 0 10px;">📖 已扫描 {d.get("_total_rules",0)} 条规则 · '
-                        f'{len(d["_risk_dict_categories"])} 个类别</div>',
-                        unsafe_allow_html=True
-                    )
-
-                violations = d.get("violations", [])
-                if violations:
-                    st.markdown(
-                        '<div style="font-size:11px;font-family:\'DM Mono\',monospace;'
-                        'letter-spacing:.12em;color:#FF3D55;margin-bottom:8px;">// 命中风险项</div>',
-                        unsafe_allow_html=True
-                    )
-                    for v in violations:
-                        sev   = v.get("severity","LOW")
-                        vclr  = {"HIGH":"#FF3D55","MEDIUM":"#F0A500","LOW":"#F0A500"}.get(sev,"#7C8FA6")
-                        vbg   = {"HIGH":"rgba(255,61,85,.07)","MEDIUM":"rgba(240,165,0,.07)",
-                                 "LOW":"rgba(240,165,0,.07)"}.get(sev,"rgba(255,255,255,.03)")
-                        vbd   = {"HIGH":"rgba(255,61,85,.3)","MEDIUM":"rgba(240,165,0,.3)",
-                                 "LOW":"rgba(240,165,0,.25)"}.get(sev,"rgba(255,255,255,.08)")
-                        st.markdown(
-                            f'<div style="background:{vbg};border:1px solid {vbd};'
-                            f'border-left:3px solid {vclr};border-radius:10px;'
-                            f'padding:12px 16px;margin-bottom:8px;">'
-                            f'<div style="color:{vclr};font-family:\'DM Mono\',monospace;'
-                            f'font-size:10px;margin-bottom:4px;">[{v.get("type","—")}] · {sev}</div>'
-                            f'<div style="color:#E2E8F0;font-size:13px;margin-bottom:4px;">'
-                            f'{v.get("text","")}</div>'
-                            f'<div style="color:#7C8FA6;font-size:11px;">建议：{v.get("suggestion","—")}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
+                if not valid_frames:
+                    st.error("❌ 没有可用的图片，请重新上传。")
                 else:
+                    n = len(valid_frames)
+                    if st.session_state.get("selected_frame_idx", 0) >= n:
+                        st.session_state.selected_frame_idx = 0
+
+                    # ── 缩略图网格 + 来源标注 + 移除 ────────────────────────────
                     st.markdown(
-                        '<div style="background:rgba(0,201,122,.08);border:1px solid rgba(0,201,122,.25);'
-                        'border-radius:10px;padding:12px 16px;color:#00C97A;font-size:13px;">'
-                        '✓ 未命中任何风控规则，可安全发布</div>',
-                        unsafe_allow_html=True
-                    )
-
-                pn = d.get("platform_notes",{})
-                if any(pn.values()):
-                    with st.expander("📋 平台专项说明"):
-                        if pn.get("tiktok"):
-                            st.markdown(f"**TikTok：** {pn['tiktok']}")
-                        if pn.get("douyin"):
-                            st.markdown(f"**抖音：** {pn['douyin']}")
-
-                fk = f"c_{st.session_state.session_id}"
-                if fk not in st.session_state.feedback_done:
-                    fa, fb, _ = st.columns([1,1,6])
-                    if fa.button("👍", key="fc_up"):
-                        _feedback_store().save(1,"合规排雷兵",st.session_state.image_name,
-                            json.dumps(d,ensure_ascii=False),st.session_state.session_id)
-                        st.session_state.feedback_done.add(fk); st.toast("感谢！",icon="👍")
-                    if fb.button("👎", key="fc_dn"):
-                        _feedback_store().save(0,"合规排雷兵",st.session_state.image_name,
-                            json.dumps(d,ensure_ascii=False),st.session_state.session_id)
-                        st.session_state.feedback_done.add(fk); st.toast("Bad Case 已记录",icon="📌")
-            else:
-                st.error(f"Agent 3 失败: {wf.compliance.error if wf.compliance else '未运行'}")
-
-    # ── Tab 爆款公式（仅批量分析后可见）──────────────────────────────────────
-    if tab_synthesis is not None:
-        with tab_synthesis:
-            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-            _sr = st.session_state.synthesis_result
-            if _sr and _sr.success:
-                _sd = _sr.data
-                # 顶部公式大卡
-                st.markdown(f"""
-<div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.10));
-            border:1px solid rgba(168,85,247,.28);border-radius:16px;
-            padding:24px 28px;margin-bottom:20px;position:relative;overflow:hidden;">
-  <div style="position:absolute;top:0;left:0;right:0;height:2px;
-              background:linear-gradient(90deg,#6366F1,#A855F7,#C084FC);"></div>
-  <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.18em;
-              color:#818CF8;margin-bottom:10px;">
-    // AGENT 5 · 爆款公式提炼师 · {_sd.get('sample_count','?')} 个样本
-  </div>
-  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;
-              font-weight:800;color:#E2E8F0;margin-bottom:10px;">
-    {_sd.get('viral_formula','—')}
-  </div>
-  <div style="font-size:13px;color:#7C8FA6;line-height:1.8;">
-    {_sd.get('executive_summary','—')}
-  </div>
-</div>""", unsafe_allow_html=True)
-
-                # Hook 规律
-                _hp = _sd.get("hook_patterns", [])
-                if _hp:
-                    st.markdown(
-                        '<div style="font-size:15px;font-weight:700;color:#E2E8F0;'
-                        'margin-bottom:10px;">🎣 Hook 规律</div>',
+                        f'<div style="display:flex;align-items:center;gap:10px;'
+                        f'margin:16px 0 12px;flex-wrap:wrap;">'
+                        f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;'
+                        f'letter-spacing:.15em;color:var(--t2);">// 已载入 {n} 张</span>'
+                        f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;'
+                        f'padding:2px 8px;border-radius:4px;background:rgba(99,102,241,.08);'
+                        f'border:1px solid rgba(99,102,241,.28);color:#818CF8;'
+                        f'letter-spacing:.08em;">批量并发 · 每张独立出报告</span>'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
-                    _hcols = st.columns(min(len(_hp), 3))
-                    for _hi, _h in enumerate(_hp):
-                        with _hcols[_hi % 3]:
-                            st.markdown(f"""
-<div class="glass" style="text-align:center;padding:16px;">
-  <div style="font-size:22px;font-weight:800;color:#818CF8;
-              font-family:'Plus Jakarta Sans',sans-serif;">{_h.get('frequency','?')}次</div>
-  <div style="font-size:12px;font-weight:700;color:#E2E8F0;margin:4px 0;">
-    {_h.get('pattern','—')}</div>
-  <div style="font-size:11px;color:#7C8FA6;">{_h.get('example','—')}</div>
-</div>""", unsafe_allow_html=True)
 
-                # 三列：视觉规律 / 转化洞察 / 合规注意
-                st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
-                _c1, _c2, _c3 = st.columns(3)
-                _col_data = [
-                    ("👁 视觉规律",    "#38BDF8", _sd.get("visual_rules", [])),
-                    ("📈 转化洞察",    "#A855F7", _sd.get("conversion_insights", [])),
-                    ("🛡 合规注意",    "#F43F5E", _sd.get("compliance_watch", [])),
-                ]
-                for _col, (_title, _clr, _items) in zip([_c1, _c2, _c3], _col_data):
-                    with _col:
-                        st.markdown(
-                            f'<div style="font-size:13px;font-weight:700;color:#E2E8F0;'
-                            f'margin-bottom:8px;">{_title}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _item in _items:
+                    _PLATFORMS  = ["（不标注）", "抖音", "TikTok", "视频号", "小红书"]
+                    _thumb_cols = st.columns(min(n, 3))
+
+                    for _fi, (_fname, _raw_b, _img_obj) in enumerate(valid_frames):
+                        with _thumb_cols[_fi % len(_thumb_cols)]:
+                            # 缩略图
+                            st.image(_img_obj, use_container_width=True)
+                            # 文件名
+                            _short = _fname if len(_fname) <= 18 else _fname[:15] + "…"
                             st.markdown(
-                                f'<div class="glass" style="padding:8px 12px;margin-bottom:6px;">'
-                                f'<span style="color:{_clr};font-size:10px;">·</span> '
-                                f'<span style="font-size:12px;color:#7C8FA6;">{_item}</span>'
-                                f'</div>',
+                                f'<div style="font-size:10px;color:#7C8FA6;text-align:center;'
+                                f'margin:2px 0 4px;" title="{_fname}">{_short}</div>',
                                 unsafe_allow_html=True,
                             )
+                            # 来源平台下拉
+                            _cur_plat = st.session_state.upload_platform_map.get(_fname, "（不标注）")
+                            _plat_idx = _PLATFORMS.index(_cur_plat) if _cur_plat in _PLATFORMS else 0
+                            _chosen = st.selectbox(
+                                "来源平台",
+                                _PLATFORMS,
+                                index=_plat_idx,
+                                key=f"plat_{_fi}_{_fname[:10].replace('.', '_')}",
+                                label_visibility="collapsed",
+                            )
+                            if _chosen != "（不标注）":
+                                st.session_state.upload_platform_map[_fname] = _chosen
+                            else:
+                                st.session_state.upload_platform_map.pop(_fname, None)
+                            # 移除按钮
+                            if st.button("✕ 移除", key=f"rm_img_{_fi}", use_container_width=True):
+                                st.session_state.upload_excluded.add(_fname)
+                                st.session_state.upload_platform_map.pop(_fname, None)
+                                st.rerun()
 
-                # 优先建议
-                _recs = _sd.get("top_recommendations", [])
-                if _recs:
+                    # 同步 session state
+                    _sel_idx = st.session_state.get("selected_frame_idx", 0)
+                    st.session_state.image_data = valid_frames[_sel_idx][1]
+                    st.session_state.image_name = valid_frames[_sel_idx][0]
+
+                    # ── 上传确认卡 ───────────────────────────────────────────────
+                    _summ_rows = ""
+                    for _fn, _, _ in valid_frames:
+                        _plat = st.session_state.upload_platform_map.get(_fn, "")
+                        _ptag = (
+                            f'<span style="font-size:9px;padding:1px 7px;border-radius:99px;'
+                            f'background:rgba(99,102,241,.15);color:#818CF8;margin-left:6px;">{_plat}</span>'
+                            if _plat else ""
+                        )
+                        _summ_rows += (
+                            f'<div style="display:flex;align-items:center;padding:5px 0;'
+                            f'border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;">'
+                            f'<span style="color:#E2E8F0;flex:1;overflow:hidden;'
+                            f'text-overflow:ellipsis;white-space:nowrap;">{_fn}</span>{_ptag}</div>'
+                        )
+
+                    _bp_confirm = st.session_state.get("brand_profile")
+                    _bp_row = ""
+                    if _bp_confirm:
+                        _tone_c = " · ".join(_bp_confirm.get("tone") or []) or "通用"
+                        _bp_row = (
+                            f'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;'
+                            f'background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.18);'
+                            f'font-size:11px;color:#818CF8;display:flex;align-items:center;gap:6px;">'
+                            f'<span>✦</span>'
+                            f'<span>品牌知识库：{_bp_confirm.get("brand_name","—")} · '
+                            f'{_bp_confirm.get("category","—")} · {_tone_c}</span>'
+                            f'</div>'
+                        )
+
                     st.markdown(
-                        '<div style="font-size:15px;font-weight:700;color:#E2E8F0;'
-                        'margin:16px 0 10px;">⚡ 优先行动建议</div>',
+                        f'<div style="background:rgba(14,18,40,.85);'
+                        f'border:1px solid rgba(99,102,241,.22);'
+                        f'border-radius:12px;padding:16px 18px;margin:16px 0 14px;">'
+                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                        f'letter-spacing:.14em;color:#6366F1;margin-bottom:8px;">'
+                        f'// 已选 {n} 张 · 准备分析</div>'
+                        f'{_summ_rows}{_bp_row}'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
-                    for _r in sorted(_recs, key=lambda x: x.get("priority", 9)):
-                        _pri = _r.get("priority", "?")
-                        st.markdown(f"""
-<div class="glass" style="padding:14px 18px;margin-bottom:8px;
-     border-left:3px solid #6366F1;">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-    <span style="font-family:'DM Mono',monospace;font-size:9px;color:#818CF8;
-                 background:rgba(99,102,241,.12);padding:2px 8px;border-radius:4px;">
-      P{_pri}</span>
-    <span style="font-size:13px;font-weight:700;color:#E2E8F0;">
-      {_r.get('action','—')}</span>
-  </div>
-  <div style="font-size:11px;color:#7C8FA6;">{_r.get('reason','—')}</div>
-</div>""", unsafe_allow_html=True)
 
-                # 方法论文档
-                _md_doc = _sd.get("methodology_doc", "")
-                if _md_doc:
-                    with st.expander("📄 完整方法论文档（可复制给团队）"):
-                        st.markdown(_md_doc)
+                    # ── 额度检查 + 大分析按钮 ────────────────────────────────────
+                    if not get_api_key():
+                        st.error("⚠️ 服务配置异常，请联系管理员")
+                    else:
+                        try:
+                            from services.auth import get_credits as _gc, get_daily_status as _gds
+                            _cur_credits  = _gc(_cur_email)  if _cur_email else 0
+                            _daily_status = _gds(_cur_email) if _cur_email else {}
+                        except Exception:
+                            _cur_credits  = 1
+                            _daily_status = {"blocked": False, "daily_used": 0,
+                                             "daily_limit": 3, "remaining": 3, "is_pro": False}
+
+                        _is_pro        = _daily_status.get("is_pro", False)
+                        _daily_blocked = _daily_status.get("blocked", False)
+                        _no_credits    = (not _is_pro) and (_cur_credits <= 0)
+                        _blocked       = _no_credits or _daily_blocked
+
+                        if _no_credits:
+                            st.markdown("""
+    <div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.18);
+                border-radius:14px;padding:20px 22px;margin:4px 0 12px;">
+      <div style="font-size:15px;font-weight:800;color:#E2E8F0;margin-bottom:4px;">
+        🔒 免费报告额度已用完
+      </div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:16px;">
+        升级 Pro · 每日最多分析 <b style="color:#A78BFA;">30 条</b>竞品素材，无限生成爆款脚本
+      </div>
+      <a href="mailto:hi@vira.ai?subject=申请订阅VIRA Pro&body=我想订阅VIRA Pro，请联系我。"
+         style="display:block;text-align:center;background:linear-gradient(135deg,#6366F1,#A855F7);
+                color:#fff;font-size:13px;font-weight:700;padding:11px 0;border-radius:9px;
+                text-decoration:none;letter-spacing:.03em;margin-bottom:6px;">
+        ✨ 升级 VIRA Pro →
+      </a>
+      <div style="font-size:10px;color:#3D4F68;text-align:center;margin-bottom:14px;">
+        发送后我们会在 24h 内联系你
+      </div>
+    </div>""", unsafe_allow_html=True)
+                            with st.expander("有礼品码？点击兑换", expanded=False):
+                                _gift_input = st.text_input(
+                                    "输入 6 位礼品码",
+                                    placeholder="如：A3F9K2",
+                                    max_chars=8,
+                                    label_visibility="collapsed",
+                                    key="gift_code_input",
+                                )
+                                if st.button("兑换", key="redeem_gift_btn", use_container_width=True):
+                                    if _gift_input.strip():
+                                        try:
+                                            from services.auth import redeem_gift_code as _redeem
+                                            _ok, _rmsg, _new_c = _redeem(_cur_email, _gift_input.strip())
+                                            if _ok:
+                                                st.success(_rmsg)
+                                                if st.session_state.get("user_info"):
+                                                    st.session_state.user_info["credits"] = _new_c
+                                                st.rerun()
+                                            else:
+                                                st.error(_rmsg)
+                                        except Exception as _re:
+                                            st.error(f"兑换失败：{_re}")
+                                    else:
+                                        st.warning("请输入礼品码")
+
+                        elif _daily_blocked:
+                            _tier = "Pro · 每日 30 条" if _is_pro else "免费版 · 每日 3 条"
+                            st.warning(
+                                f"⏰ 今日 {_tier} 素材分析额度已用完，明天零点自动重置。"
+                                + ("" if _is_pro else "  升级 Pro 可提升至每日 30 条。")
+                            )
+
+                        # ── 分析按钮 ─────────────────────────────────────────────
+                        _active_bp   = st.session_state.get("brand_profile")
+                        _brand_label = _active_bp.get("brand_name", "") if _active_bp else ""
+                        _btn_txt = (
+                            f"✦ 开始分析，生成「{_brand_label}」专属脚本 →"
+                            if _brand_label else
+                            "✦ 开始分析，生成脚本 →"
+                        )
+                        _loading_label = (
+                            f"🤖 正在结合 {_brand_label} 的品牌知识库生成专属脚本（共 {n} 张）..."
+                            if _brand_label else
+                            f"🤖 VIRA 批量分析中（共 {n} 张）..."
+                        )
+
+                        if st.button(_btn_txt, type="primary",
+                                     use_container_width=True, disabled=_blocked):
+                            from services.brand_kb import format_brand_context as _fmt_brand
+                            _brand_ctx = _fmt_brand(_active_bp) if _active_bp else ""
+                            if st.session_state.get("my_brand_formulas"):
+                                _brand_ctx += (
+                                    "\n\n【你的历史爆款规律（优先参考）】\n"
+                                    + st.session_state["my_brand_formulas"]
+                                    + "\n生成脚本时，请优先参考以上历史爆款规律，"
+                                    "在此基础上融合竞品的爆款逻辑，生成更符合品牌风格的脚本。"
+                                )
+                            _sp = st.session_state.get("style_prefs", {})
+                            if (
+                                _sp.get("tone", "中性") != "中性"
+                                or _sp.get("length", "标准（60s）") != "标准（60s）"
+                                or _sp.get("creator", "不限") != "不限"
+                            ):
+                                _brand_ctx += (
+                                    "\n\n【脚本风格要求】\n"
+                                    f"- 语言风格：{_sp['tone']}（请按此风格调整词汇和句式）\n"
+                                    f"- 目标时长：{_sp['length']}（请控制脚本内容量）\n"
+                                    f"- 适配达人类型：{_sp['creator']}（请考虑该类达人的表达习惯）\n"
+                                )
+                            st.session_state["_regen_brand_ctx"] = _brand_ctx
+                            _batch_new: list[dict] = []
+
+                            with st.status(_loading_label, expanded=True) as status_ctx:
+                                _progress = st.progress(0, text="准备中...")
+
+                                for _img_idx, (_fname, _raw_b, _img_obj) in enumerate(valid_frames):
+                                    st.markdown(
+                                        f'<div style="font-size:11px;color:#818CF8;'
+                                        f'font-family:\'DM Mono\',monospace;margin:10px 0 4px;'
+                                        f'letter-spacing:.06em;">▶ 第 {_img_idx+1}/{n} 张 · '
+                                        f'<span style="color:#E2E8F0;">{_fname}</span></div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                    _sv  = st.empty()
+                                    _sc  = st.empty()
+                                    _sco = st.empty()
+                                    _sst = st.empty()
+
+                                    _sv.markdown(
+                                        '<span class="badge b-run">AGENT 1 · 视觉拆解师 → 分析中</span>',
+                                        unsafe_allow_html=True)
+                                    _sc.markdown(
+                                        '<span class="badge b-run">AGENT 3 · 合规排雷兵 → 分析中</span>',
+                                        unsafe_allow_html=True)
+                                    _sco.markdown(
+                                        f'<span class="badge b-wait">AGENT 2 · 转化精算师 → '
+                                        f'{"结合 " + _brand_label + " 知识库，等待视觉结果..." if _brand_label else "等待视觉结果..."}'
+                                        f'</span>',
+                                        unsafe_allow_html=True)
+                                    _sst.markdown(
+                                        '<span class="badge b-wait">AGENT 4 · 策略执行官 → 等待三路汇总...</span>',
+                                        unsafe_allow_html=True)
+
+                                    def _on_done_batch(key: str, r,
+                                                       sv=_sv, sc=_sc, sco=_sco, sst=_sst):
+                                        ok  = r.success
+                                        cls = "b-done" if ok else "b-err"
+                                        tag = "✅ 完成" if ok else "❌ 失败"
+                                        _labels = {
+                                            "visual":     f"AGENT 1 · 视觉拆解师 → {tag}",
+                                            "compliance": f"AGENT 3 · 合规排雷兵 → {tag}",
+                                            "commerce":   f"AGENT 2 · 转化精算师 → {tag}",
+                                            "strategy":   f"AGENT 4 · 策略执行官 → {tag}",
+                                        }
+                                        _slots = {
+                                            "visual": sv, "compliance": sc,
+                                            "commerce": sco, "strategy": sst,
+                                        }
+                                        if key in _slots:
+                                            _slots[key].markdown(
+                                                f'<span class="badge {cls}">{_labels[key]}</span>',
+                                                unsafe_allow_html=True)
+                                        if key == "commerce" and ok:
+                                            sst.markdown(
+                                                '<span class="badge b-run">AGENT 4 · 策略执行官 → 汇总决策中...</span>',
+                                                unsafe_allow_html=True)
+
+                                    try:
+                                        _wfl = _workflow(st.session_state.rag_text, brand_context=_brand_ctx)
+                                        _wf_result = _wfl.run(_raw_b, on_agent_complete=_on_done_batch)
+                                        _batch_new.append({
+                                            "name":       _fname,
+                                            "image_data": _raw_b,
+                                            "result":     _wf_result,
+                                        })
+                                        if _wf_result and (_wf_result.success or _wf_result.visual):
+                                            try:
+                                                _history_store().save(
+                                                    session_id = st.session_state.session_id,
+                                                    image_name = _fname,
+                                                    wf_result  = _wf_result,
+                                                )
+                                            except Exception as _he:
+                                                logger.warning("History save failed: %s", _he)
+                                    except Exception as _e:
+                                        logger.error("Batch workflow error for %s: %s", _fname, _e, exc_info=True)
+                                        _batch_new.append({
+                                            "name":       _fname,
+                                            "image_data": _raw_b,
+                                            "result":     None,
+                                        })
+                                        _sv.markdown('<span class="badge b-err">AGENT 1 · 视觉拆解师 → ❌ 异常</span>', unsafe_allow_html=True)
+                                        _sc.markdown('<span class="badge b-err">AGENT 3 · 合规排雷兵 → ❌ 异常</span>', unsafe_allow_html=True)
+
+                                    _progress.progress(
+                                        (_img_idx + 1) / n,
+                                        text=f"{_img_idx + 1}/{n} 完成"
+                                    )
+
+                                _total_ok = sum(1 for b in _batch_new if b["result"] and b["result"].success)
+                                status_ctx.update(
+                                    label=f"✅ 批量分析完成！{_total_ok}/{n} 成功",
+                                    state="complete" if _total_ok > 0 else "error",
+                                )
+
+                            st.session_state.batch_results = _batch_new
+                            if _batch_new:
+                                _first = next(
+                                    (b for b in _batch_new if b["result"] and b["result"].success),
+                                    _batch_new[0],
+                                )
+                                st.session_state.workflow_result = _first["result"]
+                                st.session_state.image_name      = _first["name"]
+                                st.session_state.image_data      = _first["image_data"]
+
+                            # ── Agent E：累积历史分析结果 ───────────────────────────
+                            if "all_results" not in st.session_state:
+                                st.session_state.all_results = []
+                            if "analysis_count" not in st.session_state:
+                                st.session_state.analysis_count = 0
+                            for _b in _batch_new:
+                                if _b["result"] and _b["result"].success:
+                                    st.session_state.all_results.append(_b["result"])
+                                    st.session_state.analysis_count += 1
+                            st.session_state.all_results = st.session_state.all_results[-10:]
+
+                            _ok_count = sum(1 for b in _batch_new if b["result"] and b["result"].success)
+                            if _ok_count > 0 and _cur_email:
+                                try:
+                                    from services.auth import deduct_credit as _dc, increment_daily as _id
+                                    _deduct_ok, _remain = _dc(_cur_email)
+                                    if _deduct_ok and st.session_state.get("user_info"):
+                                        st.session_state.user_info["credits"] = _remain
+                                    _id(_cur_email)
+                                except Exception:
+                                    pass
+                            st.rerun()
+
+        # ── Tab 2：粘贴链接 ───────────────────────────────────────────────────────
+        with _tab_url:
+            st.caption("支持抖音、TikTok、小红书链接，自动提取封面 + 元数据后直接分析")
+
+            _url_input = st.text_input(
+                "粘贴视频链接",
+                placeholder="例：https://v.douyin.com/xxx 或 https://www.tiktok.com/@xxx/video/xxx",
+                key="video_url",
+            )
+            _url_platform = st.radio(
+                "平台",
+                ["抖音", "TikTok", "小红书"],
+                horizontal=True,
+                key="url_platform",
+            )
+
+            _u1, _u2 = st.columns([3, 1])
+            with _u1:
+                _parse_btn = st.button(
+                    "解析链接 →", use_container_width=True, key="parse_url",
+                    disabled=(not _url_input.strip()),
+                )
+            with _u2:
+                if st.button("清除", use_container_width=True, key="clear_parsed"):
+                    st.session_state.parsed_data = {}
+                    st.rerun()
+
+            if _parse_btn:
+                if _url_input.strip():
+                    with st.spinner("正在解析链接，通常需要 5–15 秒…"):
+                        _parsed = parse_video_url(_url_input.strip(), _url_platform)
+                    st.session_state.parsed_data = _parsed
+                    if not _parsed.get("success"):
+                        st.error(f"解析失败：{_parsed.get('error', '请检查链接是否正确')}")
+                    st.rerun()
+
+            # ── 解析结果预览 ──────────────────────────────────────────────────
+            _pd = st.session_state.get("parsed_data", {})
+            if _pd.get("success"):
+                st.markdown(
+                    '<div style="background:rgba(52,211,153,.06);'
+                    'border:1px solid rgba(52,211,153,.2);border-radius:10px;'
+                    'padding:12px 14px;margin:12px 0 4px;'
+                    'font-size:9px;color:rgba(52,211,153,.7);'
+                    'font-family:\'DM Mono\',monospace;letter-spacing:.1em;">✓ 解析成功</div>',
+                    unsafe_allow_html=True,
+                )
+                _pc1, _pc2 = st.columns([1, 2])
+                with _pc1:
+                    if _pd.get("thumbnail_bytes"):
+                        st.image(_pd["thumbnail_bytes"], use_container_width=True)
+                    else:
+                        st.markdown(
+                            '<div style="aspect-ratio:9/16;background:rgba(255,255,255,.04);'
+                            'border:1px solid rgba(255,255,255,.07);border-radius:8px;'
+                            'display:flex;align-items:center;justify-content:center;'
+                            'font-size:2rem;">🎬</div>',
+                            unsafe_allow_html=True,
+                        )
+                with _pc2:
+                    _title = _pd.get("title") or "无标题"
+                    st.markdown(f"**{_title}**")
+                    st.caption(
+                        f"{_pd.get('platform', '')} · {_pd.get('uploader', '—')}"
+                    )
+                    if _pd.get("view_count"):
+                        st.caption(
+                            f"播放 {_pd['view_count']:,} · "
+                            f"点赞 {_pd.get('like_count', 0):,}"
+                        )
+                    if _pd.get("duration"):
+                        _dur = int(_pd["duration"])
+                        st.caption(f"时长 {_dur // 60}:{_dur % 60:02d}")
+                    if _pd.get("tags"):
+                        st.caption("标签：" + " · ".join(_pd["tags"][:5]))
+
+                # ── 开始分析按钮 ────────────────────────────────────────────────
+                st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+                if not get_api_key():
+                    st.error("⚠️ 服务配置异常，请联系管理员")
+                else:
+                    _url_blocked = False
+                    try:
+                        from services.auth import get_credits as _gc2
+                        _url_credits = _gc2(_cur_email) if _cur_email else 0
+                        if _url_credits <= 0:
+                            st.warning("⚠️ 分析额度已用尽，请充值")
+                            _url_blocked = True
+                    except Exception:
+                        pass
+
+                    _bname_url = (st.session_state.brand_profile or {}).get("brand_name", "")
+                    _url_btn_txt = (
+                        f"✦ 开始分析，生成「{_bname_url}」专属脚本 →"
+                        if _bname_url else "✦ 开始分析这条视频 →"
+                    )
+                    if st.button(_url_btn_txt, type="primary",
+                                 use_container_width=True, key="analyze_url_btn",
+                                 disabled=_url_blocked):
+                        _analysis_input = parsed_to_analysis_input(_pd)
+                        _brand_ctx_url = ""
+                        try:
+                            from services.brand_kb import format_brand_context as _fbc2
+                            _abp2 = st.session_state.get("brand_profile")
+                            if _abp2:
+                                _brand_ctx_url = _fbc2(_abp2)
+                            if st.session_state.get("my_brand_formulas"):
+                                _brand_ctx_url += (
+                                    "\n\n【你的历史爆款规律（优先参考）】\n"
+                                    + st.session_state["my_brand_formulas"]
+                                    + "\n生成脚本时，请优先参考以上历史爆款规律，"
+                                    "在此基础上融合竞品的爆款逻辑，生成更符合品牌风格的脚本。"
+                                )
+                            _sp_url = st.session_state.get("style_prefs", {})
+                            if (
+                                _sp_url.get("tone", "中性") != "中性"
+                                or _sp_url.get("length", "标准（60s）") != "标准（60s）"
+                                or _sp_url.get("creator", "不限") != "不限"
+                            ):
+                                _brand_ctx_url += (
+                                    "\n\n【脚本风格要求】\n"
+                                    f"- 语言风格：{_sp_url['tone']}（请按此风格调整词汇和句式）\n"
+                                    f"- 目标时长：{_sp_url['length']}（请控制脚本内容量）\n"
+                                    f"- 适配达人类型：{_sp_url['creator']}（请考虑该类达人的表达习惯）\n"
+                                )
+                            st.session_state["_regen_brand_ctx"] = _brand_ctx_url
+                        except Exception:
+                            pass
+
+                        # 有封面图 → 转为 bytes 走视觉分析；否则走纯文本描述
+                        _thumb_bytes = _pd.get("thumbnail_bytes")
+                        _url_fname   = f"[链接]{_pd.get('title','video')[:40]}.jpg"
+
+                        with st.status(
+                            f"🤖 VIRA 分析中：{_pd.get('title','视频')[:30]}…",
+                            expanded=True,
+                        ) as _url_status:
+                            try:
+                                if _thumb_bytes:
+                                    _wfl_u = _workflow(
+                                        st.session_state.rag_text,
+                                        brand_context=_brand_ctx_url,
+                                    )
+                                    _wf_res_u = _wfl_u.run(
+                                        _thumb_bytes,
+                                        on_agent_complete=None,
+                                    )
+                                else:
+                                    # 无封面图：注入文本元数据让 Agent 参考
+                                    _meta_ctx = (
+                                        f"视频标题：{_analysis_input.get('title','')}\n"
+                                        f"描述：{_analysis_input.get('description','')[:300]}\n"
+                                        f"平台：{_analysis_input.get('platform','')}\n"
+                                        f"播放量：{_analysis_input.get('view_count',0):,}\n"
+                                        f"标签：{', '.join(_analysis_input.get('tags',[])[:8])}"
+                                    )
+                                    _wfl_u = _workflow(
+                                        _meta_ctx or st.session_state.rag_text,
+                                        brand_context=_brand_ctx_url,
+                                    )
+                                    _wf_res_u = _wfl_u.run(
+                                        None,
+                                        on_agent_complete=None,
+                                    )
+                                _url_status.update(label="✅ 分析完成！", state="complete")
+                            except Exception as _ue:
+                                _url_status.update(label=f"❌ 分析失败：{_ue}", state="error")
+                                _wf_res_u = None
+                                logger.error("URL analysis error: %s", _ue, exc_info=True)
+
+                        if _wf_res_u:
+                            st.session_state.workflow_result = _wf_res_u
+                            st.session_state.image_name      = _url_fname
+                            st.session_state.image_data      = _thumb_bytes or b""
+                            st.session_state.batch_results   = [{
+                                "name": _url_fname,
+                                "image_data": _thumb_bytes or b"",
+                                "result": _wf_res_u,
+                            }]
+                            # Agent E 历史积累
+                            if _wf_res_u.success:
+                                st.session_state.all_results.append(_wf_res_u)
+                                st.session_state.analysis_count += 1
+                                st.session_state.all_results = st.session_state.all_results[-10:]
+                            try:
+                                from services.auth import deduct_credit as _dc2, increment_daily as _id2
+                                _dok, _drem = _dc2(_cur_email)
+                                if _dok and st.session_state.get("user_info"):
+                                    st.session_state.user_info["credits"] = _drem
+                                _id2(_cur_email)
+                            except Exception:
+                                pass
+                            st.rerun()
+            elif _pd and not _pd.get("success"):
+                st.error(f"解析失败：{_pd.get('error', '未知错误')}")
+
+        # ── Tab 3：视频上传（即将上线）────────────────────────────────────────────
+        with _tab_vid:
+            st.markdown("""
+    <div style="text-align:center;padding:40px 20px 20px;">
+      <div style="font-size:2.5rem;margin-bottom:16px;">🎬</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#E2E8F0;margin-bottom:8px;">
+        视频分析功能即将上线
+      </div>
+      <div style="font-size:.85rem;color:#6B7280;margin-bottom:6px;">
+        即将支持 mp4 / mov，自动提取口播文案 + 帧级竞品分析
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:6px;
+                  background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);
+                  border-radius:99px;padding:4px 14px;margin-bottom:28px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:#FCD34D;
+                     display:inline-block;animation:lp-pulse 1.4s ease-in-out infinite;"></span>
+        <span style="font-size:11px;color:#FCD34D;font-family:'DM Mono',monospace;
+                     letter-spacing:.08em;">BETA · 内测阶段开发中</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+            if st.session_state.get("video_waitlist_submitted"):
+                st.success("✅ 已记录！功能上线时我们会第一时间通知你。")
             else:
-                st.info("请先在上方点击「提炼爆款公式」按钮，至少需要分析 2 张以上图片。")
-                if _sr and not _sr.success:
-                    st.error(f"提炼失败：{_sr.error}")
+                with st.form("video_waitlist_form"):
+                    st.markdown(
+                        '<div style="text-align:center;font-size:.82rem;color:#94A3B8;margin-bottom:10px;">'
+                        '留下邮箱，视频功能上线时优先内测</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _wl_email = st.text_input(
+                        "邮箱",
+                        value=st.session_state.get("video_waitlist_email", ""),
+                        placeholder="your@email.com",
+                        label_visibility="collapsed",
+                    )
+                    _wl_submit = st.form_submit_button(
+                        "提前获得内测资格 →",
+                        use_container_width=True,
+                        type="primary",
+                    )
+                    if _wl_submit:
+                        if _wl_email.strip() and "@" in _wl_email:
+                            st.session_state.video_waitlist_email     = _wl_email.strip()
+                            st.session_state.video_waitlist_submitted = True
+                            st.rerun()
+                        else:
+                            st.error("请输入有效邮箱")
 
-    # ── Tab 2：重构脚本 ────────────────────────────────────────────────────────
-    with tab_scripts:
-        st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-        st.markdown("""
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-  <div style="width:3px;height:20px;border-radius:2px;background:#A855F7;flex-shrink:0;"></div>
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:#A855F7;">AGENT 2</span>
-  <span style="font-size:15px;font-weight:700;color:#E2E8F0;">转化精算师</span>
-</div>""", unsafe_allow_html=True)
+            st.markdown(
+                '<div style="text-align:center;font-size:.75rem;color:#374151;margin-top:16px;">'
+                '当前请使用「📷 上传截图」进行竞品分析</div>',
+                unsafe_allow_html=True,
+            )
+
+
+    # ══════════════════════════════════════════════════════════════════════════════
+
+with _tab_comp:
+    # 结果展示区域
+    # ══════════════════════════════════════════════════════════════════════════════
+
+    if st.session_state.workflow_result:
+        wf = st.session_state.workflow_result
+
+        # ── 结果页顶部操作栏（返回按钮 + 分析信息）──────────────────────────────
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:16px 0 8px;border-bottom:1px solid rgba(255,255,255,.06);
+                margin-bottom:4px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;
+                    color:#3D4F68;">// 分析结果</div>
+        <div style="font-size:13px;color:#E2E8F0;font-weight:600;">
+          {st.session_state.image_name or '未知文件'}
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:#3D4F68;">
+          {wf.total_tokens:,} tokens · {wf.total_elapsed_ms}ms
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+        back_col, export_col, _ = st.columns([1, 1, 4])
+        with back_col:
+            if st.button("← 重新分析", key="back_to_upload"):
+                for k in ("workflow_result", "image_data", "chat_history", "feedback_done"):
+                    st.session_state[k] = (
+                        None if k not in ("chat_history", "feedback_done")
+                        else ([] if k == "chat_history" else set())
+                    )
+                st.session_state.batch_results    = []
+                st.session_state.synthesis_result  = None
+                st.session_state.selected_frame_idx = 0
+                st.rerun()
+
+        with export_col:
+            # ── 导出完整报告 ─────────────────────────────────────────────────────
+            from services.report_generator import build_markdown, build_pdf
+            _md_report = build_markdown(
+                wf           = wf,
+                image_name   = st.session_state.image_name,
+                synthesis    = st.session_state.get("synthesis_result"),
+                transcript   = (
+                    st.session_state.get("transcript_result", {}) or {}
+                ).get("transcript", ""),
+                user_email   = (st.session_state.get("user_info") or {}).get("email", ""),
+            )
+            _pdf_bytes = build_pdf(_md_report)
+            _report_stem = Path(st.session_state.image_name or "report").stem
+
+            if _pdf_bytes:
+                st.download_button(
+                    "⬇️ 导出 PDF",
+                    data=_pdf_bytes,
+                    file_name=f"VIRA_{_report_stem}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="export_pdf",
+                )
+            else:
+                st.download_button(
+                    "⬇️ 导出 Markdown",
+                    data=_md_report.encode("utf-8"),
+                    file_name=f"VIRA_{_report_stem}.md",
+                    mime="text/markdown",
+                    use_container_width=True,
+                    key="export_md",
+                )
+
+        # ── 批量结果导航（仅当批量分析了多张时显示）────────────────────────────────
+        _batch_stored = st.session_state.get("batch_results", [])
+        if len(_batch_stored) > 1:
+            st.markdown(f"""
+    <div style="margin:16px 0 10px;">
+      <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.18em;color:#818CF8;">
+        // 批量结果导航 · {len(_batch_stored)} 张图片
+      </span>
+      <span style="font-size:11px;color:#7C8FA6;margin-left:10px;">点击切换查看各图详细报告</span>
+    </div>""", unsafe_allow_html=True)
+
+            _nav_cols = st.columns(min(len(_batch_stored), 4))
+            for _bi, _bitem in enumerate(_batch_stored):
+                _br       = _bitem.get("result")
+                _is_cur   = (_bitem["name"] == st.session_state.image_name)
+                _conf     = (
+                    _br.strategy.data.get("confidence_score", "?")
+                    if _br and _br.strategy and _br.strategy.success else "?"
+                )
+                _risk     = (
+                    _br.compliance.data.get("risk_level", "?")
+                    if _br and _br.compliance and _br.compliance.success else "?"
+                )
+                _risk_clr = {"LOW": "#00C97A", "MEDIUM": "#F0A500", "HIGH": "#FF3D55"}.get(
+                    str(_risk), "#7C8FA6"
+                )
+                _border   = (
+                    "border:2px solid #6366F1;box-shadow:0 0 16px rgba(99,102,241,.35);"
+                    if _is_cur else
+                    "border:1px solid rgba(139,92,246,.18);"
+                )
+                _short = _bitem["name"][:16] + ("…" if len(_bitem["name"]) > 16 else "")
+
+                with _nav_cols[_bi % 4]:
+                    try:
+                        _nav_img = Image.open(io.BytesIO(_bitem["image_data"]))
+                        st.markdown(
+                            f'<div style="{_border}border-radius:8px;overflow:hidden;margin-bottom:4px;">',
+                            unsafe_allow_html=True,
+                        )
+                        st.image(_nav_img, use_container_width=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+                    except Exception:
+                        pass
+
+                    st.markdown(
+                        f'<div style="font-size:10px;font-family:\'DM Mono\',monospace;'
+                        f'color:{"#818CF8" if _is_cur else "#7C8FA6"};'
+                        f'margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">'
+                        f'{"▶ " if _is_cur else ""}{_short}</div>'
+                        f'<div style="font-size:10px;color:#3D4F68;margin-bottom:6px;">'
+                        f'置信 <span style="color:#818CF8;">{_conf}</span> · '
+                        f'<span style="color:{_risk_clr};">{_risk}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if not _is_cur:
+                        if st.button(f"查看", key=f"batch_nav_{_bi}", use_container_width=True):
+                            if _bitem["result"]:
+                                st.session_state.workflow_result = _bitem["result"]
+                                st.session_state.image_name      = _bitem["name"]
+                                st.session_state.image_data      = _bitem["image_data"]
+                                st.session_state.chat_history    = []
+                                st.session_state.feedback_done   = set()
+                                st.rerun()
+                            else:
+                                st.toast(f"⚠️ {_bitem['name']} 分析失败，无法查看", icon="❌")
+
+            # ── 爆款公式提炼按钮 ──────────────────────────────────────────────────
+            _syn_done = st.session_state.get("synthesis_result") is not None
+            _syn_label = "✅ 已提炼爆款公式" if _syn_done else f"🔬 提炼爆款公式（{len(_batch_stored)} 个样本）"
+            _s1, _s2, _s3 = st.columns([1, 2, 1])
+            with _s2:
+                if st.button(_syn_label, use_container_width=True, key="run_synthesis",
+                             disabled=(not get_api_key())):
+                    with st.spinner("Agent 5 正在归纳爆款公式..."):
+                        try:
+                            from core.synthesis_agent import SynthesisAgent
+                            _syn_client = _workflow(st.session_state.rag_text).client
+                            _syn_agent  = SynthesisAgent(_syn_client)
+                            st.session_state.synthesis_result = _syn_agent.run(_batch_stored)
+                            st.rerun()
+                        except Exception as _se:
+                            st.error(f"提炼失败：{_se}")
+
+            st.markdown('<hr class="vira-hr" style="margin:16px 0 8px;">', unsafe_allow_html=True)
+
+        # ── 区块 1：你的专属拍摄方案（最显眼，不折叠）──────────────────────────
+        _co_brand_name = ""
+        _d_co = None
         if wf.commerce and wf.commerce.success:
-            d = wf.commerce.data
-            s1, s2 = st.columns(2)
-            s1.metric("病毒传播潜力", f"{d.get('virality_score','—')}/100")
-            s2.metric("商业转化潜力", f"{d.get('conversion_potential','—')}/100")
-            if d.get("rag_references"):
-                with st.expander("📚 已调用品牌知识库片段"):
-                    for ref in d["rag_references"]:
+            _d_co = wf.commerce.data
+            _co_brand_name = _d_co.get("brand_name", "")
+        _co_title_sfx = (
+            f" · <span style='color:#C084FC;font-size:14px;'>为 {_co_brand_name} 生成</span>"
+            if _co_brand_name and _co_brand_name != "通用" else ""
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:10px;margin:8px 0 4px;">'
+            f'<div style="width:4px;height:28px;border-radius:2px;'
+            f'background:linear-gradient(180deg,#A855F7,#6366F1);flex-shrink:0;"></div>'
+            f'<span style="font-size:18px;font-weight:800;color:#E2E8F0;">🎬 你的专属拍摄方案</span>'
+            f'{_co_title_sfx}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("基于竞品分析 + 你的品牌知识库生成，直接可执行")
+        st.markdown('<div style="height:4px;"></div>', unsafe_allow_html=True)
+
+        if _d_co:
+            _s1c, _s2c = st.columns(2)
+            _s1c.metric("病毒传播潜力", f"{_d_co.get('virality_score','—')}/100")
+            _s2c.metric("商业转化潜力", f"{_d_co.get('conversion_potential','—')}/100")
+            if _d_co.get("rag_references"):
+                with st.expander("📚 已调用 RAG 知识库片段"):
+                    for _ref in _d_co["rag_references"]:
                         st.markdown(
                             f'<div style="background:rgba(168,85,247,.06);border-left:2px solid #A855F7;'
                             f'border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:12px;'
-                            f'color:#7C8FA6;">{ref}</div>',
+                            f'color:#7C8FA6;">{_ref}</div>',
                             unsafe_allow_html=True
                         )
-            st.markdown(
-                f'<div class="glass" style="margin-bottom:16px;">'
-                f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:6px;">// 优化逻辑</div>'
-                f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
-                f'{d.get("optimization_summary","—")}</div></div>',
-                unsafe_allow_html=True
+            if _d_co.get("optimization_summary"):
+                st.markdown(
+                    f'<div class="glass" style="margin-bottom:12px;">'
+                    f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                    f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:6px;">// 优化逻辑</div>'
+                    f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
+                    f'{_d_co.get("optimization_summary","—")}</div></div>',
+                    unsafe_allow_html=True
+                )
+
+            _scripts = _d_co.get("scripts", [])
+            _target_platforms_co = (
+                (st.session_state.get("brand_profile") or {}).get("target_platforms") or []
             )
-            st.markdown(
-                '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.18em;'
-                'color:#A855F7;margin-bottom:12px;">// 三套商业重构脚本</div>',
-                unsafe_allow_html=True
-            )
-            for i, s in enumerate(d.get("scripts",[])):
-                accent = ["#818CF8","#C084FC","#60A5FA"][i % 3]
-                with st.expander(f"方案 {i+1}：{s.get('title',f'脚本{i+1}')}", expanded=(i==0)):
+
+            def _render_script_in_tab(_s, _i, _prefix=""):
+                # Override with regenerated version if available
+                _regen_key = f"_regen_script_{_prefix}_{_i}"
+                _is_regen  = _regen_key in st.session_state
+                if _is_regen:
+                    _s = st.session_state[_regen_key]
+
+                _ac     = ["#818CF8", "#C084FC", "#60A5FA"][_i % 3]
+                _hook   = _s.get("hook", "—")
+                _cta    = _s.get("cta", "—")
+                _scenes = _s.get("scenes") or []
+                _inf    = _s.get("influencer_type", "")
+                _plats  = " / ".join(_s.get("platforms") or [])
+                _body   = _s.get("body", "")
+                _title  = _s.get("title", f"脚本 {_i+1}")
+                _compliance_note = _s.get("compliance_note", "")
+                _ta_pfx  = f"{_prefix}_{_i}" if _prefix else str(_i)
+
+                # 「换一个版本」后显示版本差异说明
+                if _is_regen:
+                    _diff = _s.get("diff_from_original", "")
+                    if _diff:
+                        st.caption(f"💡 和上一版本的区别：{_diff}")
+
+                _meta = []
+                if _inf:   _meta.append(f"达人：{_inf}")
+                if _plats: _meta.append(f"平台：{_plats}")
+                if _meta:
                     st.markdown(
-                        f'<div style="background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);'
-                        f'border-left:3px solid {accent};border-radius:10px;padding:18px 20px;">'
-                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                        f'letter-spacing:.14em;color:{accent};margin-bottom:6px;">🎬 前3秒 HOOK</div>'
-                        f'<div style="color:#E2E8F0;font-size:13px;line-height:1.75;margin-bottom:14px;">'
-                        f'{s.get("hook","—")}</div>'
-                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                        f'letter-spacing:.14em;color:{accent};margin-bottom:6px;">📖 正文内容</div>'
-                        f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;margin-bottom:14px;">'
-                        f'{s.get("body","—")}</div>'
-                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                        f'letter-spacing:.14em;color:{accent};margin-bottom:6px;">🎯 CTA</div>'
-                        f'<div style="color:#E2E8F0;font-size:13px;line-height:1.75;">'
-                        f'{s.get("cta","—")}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True
+                        f'<div style="font-size:11px;color:#6B7280;margin-bottom:8px;">'
+                        + " · ".join(_meta) + "</div>",
+                        unsafe_allow_html=True,
                     )
-            fk = f"co_{st.session_state.session_id}"
-            if fk not in st.session_state.feedback_done:
-                fa, fb, _ = st.columns([1,1,6])
-                if fa.button("👍 脚本有用", key="fco_up"):
-                    _feedback_store().save(1,"转化精算师",st.session_state.image_name,
-                        json.dumps(d,ensure_ascii=False),st.session_state.session_id)
-                    st.session_state.feedback_done.add(fk); st.toast("感谢！",icon="👍")
-                if fb.button("👎 脚本无用", key="fco_dn"):
-                    _feedback_store().save(0,"转化精算师",st.session_state.image_name,
-                        json.dumps(d,ensure_ascii=False),st.session_state.session_id)
-                    st.session_state.feedback_done.add(fk); st.toast("Bad Case 已记录",icon="📌")
+
+                # ── Hook ──────────────────────────────────────────────────────
+                st.markdown(
+                    f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                    f'letter-spacing:.14em;color:{_ac};margin-bottom:4px;">'
+                    f'🎬 开场 HOOK（前3秒台词）</div>',
+                    unsafe_allow_html=True,
+                )
+                _hook_val = st.text_area(
+                    label="hook",
+                    value=_hook,
+                    height=80,
+                    key=f"hook_{_ta_pfx}",
+                    label_visibility="collapsed",
+                )
+
+                # ── 主体内容 ──────────────────────────────────────────────────
+                st.markdown(
+                    '<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                    'letter-spacing:.14em;color:#94A3B8;margin-top:10px;margin-bottom:4px;">'
+                    '📽 主体内容（分镜描述）</div>',
+                    unsafe_allow_html=True,
+                )
+                if _scenes:
+                    _body_text = "\n".join([
+                        f"镜头{sc.get('scene_no','')}｜{sc.get('description','')}｜「{sc.get('dialogue','—')}」"
+                        for sc in _scenes
+                    ])
+                else:
+                    _body_text = _body
+                _body_val = st.text_area(
+                    label="body",
+                    value=_body_text,
+                    height=150,
+                    key=f"body_{_ta_pfx}",
+                    label_visibility="collapsed",
+                )
+
+                # ── CTA ───────────────────────────────────────────────────────
+                st.markdown(
+                    f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                    f'letter-spacing:.14em;color:{_ac};margin-top:10px;margin-bottom:4px;">'
+                    f'🎯 结尾 CTA（≤10字）</div>',
+                    unsafe_allow_html=True,
+                )
+                _cta_val = st.text_area(
+                    label="cta",
+                    value=_cta,
+                    height=68,
+                    key=f"cta_{_ta_pfx}",
+                    label_visibility="collapsed",
+                )
+
+                # ── 合规提醒（只读）──────────────────────────────────────────
+                st.markdown(
+                    '<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                    'letter-spacing:.14em;color:#6B7280;margin-top:10px;margin-bottom:4px;">'
+                    '🛡 合规提醒</div>',
+                    unsafe_allow_html=True,
+                )
+                _compliance_display = (
+                    _compliance_note if _compliance_note
+                    else ("（重新生成版本后自动填充）" if not _is_regen else "无需特别注意")
+                )
+                _compliance_val = st.text_area(
+                    label="compliance",
+                    value=_compliance_display,
+                    height=68,
+                    key=f"compliance_{_ta_pfx}",
+                    label_visibility="collapsed",
+                    disabled=True,
+                )
+
+                # ── 按钮行：复制 + 换一个版本 ─────────────────────────────────
+                _copy_sk       = f"copy_script_{_ta_pfx}"
+                _copy_show_key = f"_show_copy_{_copy_sk}"
+                _regen_btn_key = f"regen_{_ta_pfx}"
+                _col_copy, _col_regen = st.columns([2, 1])
+
+                with _col_copy:
+                    if st.button("📋 复制完整脚本", key=_copy_sk, use_container_width=True):
+                        st.session_state[_copy_show_key] = not st.session_state.get(_copy_show_key, False)
+
+                with _col_regen:
+                    if st.button("🔄 换一个版本", key=_regen_btn_key, use_container_width=True):
+                        with st.spinner("重新生成中..."):
+                            _vis_summary = ""
+                            try:
+                                if wf.visual and wf.visual.success:
+                                    _vis_summary = str(wf.visual.data)[:2000]
+                            except Exception:
+                                pass
+                            _bctx   = st.session_state.get("_regen_brand_ctx", "")
+                            _sp_rg  = st.session_state.get("style_prefs", {})
+                            _new_s  = _regenerate_single_script(_i, _vis_summary, _bctx, _sp_rg)
+                            if _new_s:
+                                # Clear stale text-area session keys so new values initialize
+                                for _ck in [f"hook_{_ta_pfx}", f"body_{_ta_pfx}",
+                                            f"cta_{_ta_pfx}", f"compliance_{_ta_pfx}"]:
+                                    st.session_state.pop(_ck, None)
+                                st.session_state[_regen_key] = _new_s
+                                st.rerun()
+
+                if st.session_state.get(_copy_show_key, False):
+                    _full_script = (
+                        f"【{_title}】\n\n"
+                        f"开场Hook：{_hook_val}\n\n"
+                        f"主体内容：\n{_body_val}\n\n"
+                        f"结尾CTA：{_cta_val}\n\n"
+                        f"合规提醒：{_compliance_val}"
+                    )
+                    st.code(_full_script, language=None)
+                    st.caption("↑ 点击代码块右上角复制图标，即可一键复制脚本发给达人")
+
+                # ── 轻量反馈（默认折叠，不抢主视觉）─────────────────────────
+                with st.expander("这套脚本有问题？告诉我们", expanded=False):
+                    _fb_reason = st.radio(
+                        "主要问题是：",
+                        options=[
+                            "太生硬，不像真人说的话",
+                            "不符合我们品牌的风格",
+                            "内容方向不对，和竞品差太多",
+                            "合规判断有误",
+                            "其他问题",
+                        ],
+                        key=f"feedback_reason_{_ta_pfx}",
+                        horizontal=False,
+                    )
+                    _fb_detail = st.text_input(
+                        "具体说说（可选）",
+                        placeholder="比如：我们是美妆品牌，脚本里不应该出现科技感词汇",
+                        key=f"feedback_detail_{_ta_pfx}",
+                    )
+                    if st.button("提交反馈", key=f"submit_feedback_{_ta_pfx}"):
+                        import json as _json_fb2, datetime as _dt_fb2
+                        _fb_data = {
+                            "timestamp":       _dt_fb2.datetime.now().isoformat(),
+                            "type":            "script",
+                            "script_index":    _i,
+                            "script_title":    _title,
+                            "reason":          _fb_reason,
+                            "detail":          _fb_detail,
+                            "brand_category":  st.session_state.get("brand_category", "未知"),
+                            "target_platform": (
+                                (st.session_state.get("brand_profile") or {})
+                                .get("target_platforms", [])
+                            ),
+                            "style_prefs":     st.session_state.get("style_prefs", {}),
+                        }
+                        try:
+                            with open("feedback_log.jsonl", "a", encoding="utf-8") as _ffh:
+                                _ffh.write(
+                                    _json_fb2.dumps(_fb_data, ensure_ascii=False) + "\n"
+                                )
+                            st.success("✅ 已收到，我们会用来改进 VIRA")
+                        except Exception:
+                            st.success("✅ 已收到，感谢反馈")
+
+            # 多平台 Tab 展示 / 单列脚本 Tab 展示
+            if len(_target_platforms_co) > 1:
+                _outer_pt_tabs = st.tabs(_target_platforms_co)
+                for _pti, _ptn in enumerate(_target_platforms_co):
+                    with _outer_pt_tabs[_pti]:
+                        st.markdown(f"### {_ptn} 版脚本")
+                        _pt_sc = [
+                            _ss for _ss in _scripts
+                            if _ptn in (_ss.get("platforms") or [])
+                            or _ptn in _ss.get("title", "")
+                        ] or _scripts
+                        if _pt_sc:
+                            _pt_inner = st.tabs([
+                                f"方案 {_jj+1}：{_ss.get('title', f'脚本{_jj+1}')}"
+                                for _jj, _ss in enumerate(_pt_sc)
+                            ])
+                            for _pii, (_pitab, _pss) in enumerate(zip(_pt_inner, _pt_sc)):
+                                with _pitab:
+                                    _render_script_in_tab(_pss, _pii, _prefix=_ptn)
+            elif _scripts:
+                _default_names = ["稳健发法", "激进发法", "备选方案"]
+                _tab_names = [
+                    _default_names[j] if len(_scripts) == 3 and j < 3
+                    else f"方案 {j+1}：{_ss.get('title', f'脚本{j+1}')}"
+                    for j, _ss in enumerate(_scripts)
+                ]
+                _inner_tabs = st.tabs(_tab_names)
+                for _si, (_stab, _ss) in enumerate(zip(_inner_tabs, _scripts)):
+                    with _stab:
+                        _render_script_in_tab(_ss, _si)
+            else:
+                st.info("暂无脚本，请重新分析")
+
+            _fk_co = f"co_{st.session_state.session_id}"
+            if _fk_co not in st.session_state.feedback_done:
+                _fa_co, _fb_co, _ = st.columns([1, 1, 6])
+                if _fa_co.button("👍 脚本有用", key="fco_up"):
+                    _feedback_store().save(1, "转化精算师", st.session_state.image_name,
+                        json.dumps(_d_co, ensure_ascii=False), st.session_state.session_id)
+                    st.session_state.feedback_done.add(_fk_co); st.toast("感谢！", icon="👍")
+                if _fb_co.button("👎 脚本无用", key="fco_dn"):
+                    _feedback_store().save(0, "转化精算师", st.session_state.image_name,
+                        json.dumps(_d_co, ensure_ascii=False), st.session_state.session_id)
+                    st.session_state.feedback_done.add(_fk_co); st.toast("Bad Case 已记录", icon="📌")
         else:
             st.error(f"Agent 2 失败: {wf.commerce.error if wf.commerce else '未运行'}")
 
-    # ── Tab 3：开发者视图 ──────────────────────────────────────────────────────
-    with tab_dev:
-        st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-        st.markdown("""
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-  <div style="width:3px;height:20px;border-radius:2px;background:#6366F1;flex-shrink:0;"></div>
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:#6366F1;">DEVELOPER</span>
-  <span style="font-size:15px;font-weight:700;color:#E2E8F0;">Trace &amp; Raw Output</span>
-</div>
-<div style="font-size:11px;color:#3D4F68;margin-bottom:16px;font-family:'DM Mono',monospace;">
-原始 API 响应 · Token 消耗 · 后端执行延迟 · 并发架构说明
-</div>""", unsafe_allow_html=True)
+        st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
 
-        dv1, dv2, dv3 = st.columns(3)
-        dv1.metric("总 Token 消耗", f"{wf.total_tokens:,}")
-        dv2.metric("端到端延迟",    f"{wf.total_elapsed_ms}ms")
-        dv3.metric("并发架构",      "asyncio.gather (A1‖A3) → A2 → A4")
+        # ── 区块 2：完整分析报告（折叠，默认收起）────────────────────────────────
+        with st.expander("📊 查看完整分析报告", expanded=False):
+            st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+            col_v, col_c = st.columns([1, 1], gap="large")
 
-        st.markdown("""
-<div class="glass" style="margin-top:12px;border-left:2px solid #6366F1;">
-  <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;
-              color:#6366F1;margin-bottom:10px;">// asyncio.gather 并发策略</div>
-  <div style="font-size:12px;color:#7C8FA6;line-height:1.9;">
-    <span style="color:#E2E8F0;">Phase 1：</span>
-    <code style="background:rgba(99,102,241,.10);color:#6366F1;padding:1px 6px;
-                 border-radius:4px;font-family:'DM Mono',monospace;">
-      asyncio.gather(asyncio.to_thread(A1), asyncio.to_thread(A3))
-    </code><br>
-    A1/A3 各自在独立线程发出 OpenAI HTTP 请求，event loop 挂起等待，无阻塞。<br>
-    <span style="color:#E2E8F0;">Phase 2：</span>A2 串行等待 A1 视觉结果（RAG 上下文依赖）<br>
-    <span style="color:#E2E8F0;">Phase 3：</span>A4 串行汇总三路输出，输出最终战略裁决
-  </div>
-</div>""", unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        agent_map = [
-            ("Agent 1 · 视觉拆解师", wf.visual,     "#60A5FA"),
-            ("Agent 2 · 转化精算师", wf.commerce,   "#A855F7"),
-            ("Agent 3 · 合规排雷兵", wf.compliance, "#F43F5E"),
-            ("Agent 4 · 策略执行官", wf.strategy,   "#6366F1"),
-        ]
-        for label, r, color in agent_map:
-            if r:
-                state = "✅ SUCCESS" if r.success else "❌ FAILED"
-                with st.expander(f"📡 {label} — {state}"):
-                    if r.usage:
-                        u = r.usage
-                        c1,c2,c3,c4 = st.columns(4)
-                        c1.metric("Prompt Tokens",     u.get("prompt_tokens","—"))
-                        c2.metric("Completion Tokens", u.get("completion_tokens","—"))
-                        c3.metric("Total Tokens",      u.get("total_tokens","—"))
-                        c4.metric("API 延迟",           f"{u.get('elapsed_ms','—')}ms")
+            with col_v:
+                st.markdown(
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">'
+                    '<div style="width:3px;height:20px;border-radius:2px;background:#38BDF8;flex-shrink:0;"></div>'
+                    '<span style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.15em;color:#38BDF8;">AGENT 1</span>'
+                    '<span style="font-size:15px;font-weight:700;color:#E2E8F0;">视觉拆解师</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+                if wf.visual and wf.visual.success:
+                    d = wf.visual.data
+                    st.metric("Hook 类型", d.get("hook_type", "—"))
+                    s1, s2 = st.columns(2)
+                    s1.metric("Hook 评分", f"{d.get('hook_score','—')}/100")
+                    s2.metric("视觉质量", f"{d.get('visual_score','—')}/100")
                     st.markdown(
-                        f'<div style="font-family:\'DM Mono\',monospace;font-size:9px;'
-                        f'letter-spacing:.14em;color:{color};margin:10px 0 6px;">// RAW RESPONSE</div>',
+                        f'<div class="glass" style="margin-top:10px;">'
+                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                        f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 情绪基调</div>'
+                        f'<div style="color:#E2E8F0;font-size:13px;">{d.get("emotional_tone","—")}</div>'
+                        f'</div>',
                         unsafe_allow_html=True
                     )
                     st.markdown(
-                        f'<div class="dev-raw">{r.raw_response or "(空)"}</div>',
-                        unsafe_allow_html=True)
+                        f'<div class="glass">'
+                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                        f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 前3秒分析</div>'
+                        f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
+                        f'{d.get("first_3s_analysis","—")}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                    if d.get("key_visual_elements"):
+                        els = "".join(
+                            f'<div style="display:flex;align-items:center;gap:7px;'
+                            f'margin-bottom:5px;font-size:12px;color:#7C8FA6;">'
+                            f'<span style="color:#38BDF8;">·</span> {el}</div>'
+                            for el in d["key_visual_elements"]
+                        )
+                        st.markdown(
+                            f'<div class="glass"><div style="font-size:9px;font-family:\'DM Mono\','
+                            f'monospace;letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">'
+                            f'// 关键视觉元素</div>{els}</div>',
+                            unsafe_allow_html=True
+                        )
+                    fk = f"v_{st.session_state.session_id}"
+                    if fk not in st.session_state.feedback_done:
+                        fa, fb, _ = st.columns([1, 1, 6])
+                        if fa.button("👍", key="fv_up"):
+                            _feedback_store().save(1, "视觉拆解师", st.session_state.image_name,
+                                json.dumps(d, ensure_ascii=False), st.session_state.session_id)
+                            st.session_state.feedback_done.add(fk); st.toast("感谢！", icon="👍")
+                        if fb.button("👎", key="fv_dn"):
+                            _feedback_store().save(0, "视觉拆解师", st.session_state.image_name,
+                                json.dumps(d, ensure_ascii=False), st.session_state.session_id)
+                            st.session_state.feedback_done.add(fk); st.toast("Bad Case 已记录", icon="📌")
+                else:
+                    st.error(f"Agent 1 失败: {wf.visual.error if wf.visual else '未运行'}")
 
-        # 风控字典展示
-        st.markdown("---")
-        st.markdown(
-            '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.15em;'
-            'color:#FF3D55;margin-bottom:4px;">// RISK DICTIONARY</div>'
-            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:4px;">'
-            'Agent 3 内置风控字典</div>'
-            '<div style="font-size:11px;color:#3D4F68;font-family:\'DM Mono\',monospace;'
-            'margin-bottom:12px;">TikTok Brand Risk Dictionary v1.0 · 每次扫描完整注入 Prompt</div>',
-            unsafe_allow_html=True
-        )
-        try:
-            from core.agents import TIKTOK_RISK_DICT
-            for cat, terms in TIKTOK_RISK_DICT.items():
-                with st.expander(f"▸ {cat}（{len(terms)} 条）"):
-                    st.markdown("、".join(f"`{t}`" for t in terms))
-        except Exception:
-            pass
-
-        # Bad Case 导出
-        st.markdown("---")
-        st.markdown(
-            '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.15em;'
-            'color:#7C8FA6;margin-bottom:4px;">// EXPORT</div>'
-            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:12px;">'
-            'Bad Case 导出（SFT 数据回流）</div>',
-            unsafe_allow_html=True
-        )
-        if st.button("生成 bad_cases.json"):
-            try:
-                bad = _feedback_store().export_bad_cases()
-                st.download_button(
-                    "⬇️ 下载 bad_cases.json",
-                    data=json.dumps(bad, ensure_ascii=False, indent=2),
-                    file_name="bad_cases.json", mime="application/json",
+            with col_c:
+                st.markdown(
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">'
+                    '<div style="width:3px;height:20px;border-radius:2px;background:#FF3D55;flex-shrink:0;"></div>'
+                    '<span style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.15em;color:#FF3D55;">AGENT 3</span>'
+                    '<span style="font-size:15px;font-weight:700;color:#E2E8F0;">合规排雷兵</span>'
+                    '</div>',
+                    unsafe_allow_html=True
                 )
-            except Exception as e:
-                st.error(f"导出失败：{e}")
+                if wf.compliance and wf.compliance.success:
+                    d    = wf.compliance.data
+                    risk = d.get("risk_level", "—")
+                    risk_clr = {"LOW": "#00C97A", "MEDIUM": "#F0A500", "HIGH": "#FF3D55"}.get(risk, "#7C8FA6")
+                    risk_bg  = {"LOW": "rgba(0,201,122,.1)", "MEDIUM": "rgba(240,165,0,.1)",
+                                "HIGH": "rgba(255,61,85,.1)"}.get(risk, "rgba(255,255,255,.04)")
+                    risk_bd  = {"LOW": "rgba(0,201,122,.3)", "MEDIUM": "rgba(240,165,0,.3)",
+                                "HIGH": "rgba(255,61,85,.3)"}.get(risk, "rgba(255,255,255,.08)")
+                    st.markdown(
+                        f'<div style="display:inline-flex;align-items:center;gap:8px;'
+                        f'background:{risk_bg};border:1px solid {risk_bd};border-radius:8px;'
+                        f'padding:8px 16px;margin-bottom:12px;">'
+                        f'<span style="font-family:\'DM Mono\',monospace;font-size:10px;'
+                        f'letter-spacing:.1em;color:#7C8FA6;">风险等级</span>'
+                        f'<span style="font-weight:800;font-size:14px;color:{risk_clr};">{risk}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.metric("合规评分", f"{d.get('compliance_score','—')}/100")
+                    if d.get("_risk_dict_categories"):
+                        st.markdown(
+                            f'<div style="font-size:10px;color:#3D4F68;font-family:\'DM Mono\','
+                            f'monospace;margin:6px 0 10px;">📖 已扫描 {d.get("_total_rules",0)} 条规则 · '
+                            f'{len(d["_risk_dict_categories"])} 个类别</div>',
+                            unsafe_allow_html=True
+                        )
+                    violations = d.get("violations", [])
+                    if violations:
+                        st.markdown(
+                            '<div style="font-size:11px;font-family:\'DM Mono\',monospace;'
+                            'letter-spacing:.12em;color:#FF3D55;margin-bottom:8px;">// 命中风险项</div>',
+                            unsafe_allow_html=True
+                        )
+                        for v in violations:
+                            sev  = v.get("severity", "LOW")
+                            vclr = {"HIGH": "#FF3D55", "MEDIUM": "#F0A500", "LOW": "#F0A500"}.get(sev, "#7C8FA6")
+                            vbg  = {"HIGH": "rgba(255,61,85,.07)", "MEDIUM": "rgba(240,165,0,.07)",
+                                    "LOW": "rgba(240,165,0,.07)"}.get(sev, "rgba(255,255,255,.03)")
+                            vbd  = {"HIGH": "rgba(255,61,85,.3)", "MEDIUM": "rgba(240,165,0,.3)",
+                                    "LOW": "rgba(240,165,0,.25)"}.get(sev, "rgba(255,255,255,.08)")
+                            st.markdown(
+                                f'<div style="background:{vbg};border:1px solid {vbd};'
+                                f'border-left:3px solid {vclr};border-radius:10px;'
+                                f'padding:12px 16px;margin-bottom:8px;">'
+                                f'<div style="color:{vclr};font-family:\'DM Mono\',monospace;'
+                                f'font-size:10px;margin-bottom:4px;">[{v.get("type","—")}] · {sev}</div>'
+                                f'<div style="color:#E2E8F0;font-size:13px;margin-bottom:4px;">'
+                                f'{v.get("text","")}</div>'
+                                f'<div style="color:#7C8FA6;font-size:11px;">建议：{v.get("suggestion","—")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                    else:
+                        st.markdown(
+                            '<div style="background:rgba(0,201,122,.08);border:1px solid rgba(0,201,122,.25);'
+                            'border-radius:10px;padding:12px 16px;color:#00C97A;font-size:13px;">'
+                            '✓ 未命中任何风控规则，可安全发布</div>',
+                            unsafe_allow_html=True
+                        )
+                    pn = d.get("platform_notes", {})
+                    if any(pn.values()):
+                        with st.expander("📋 平台专项说明"):
+                            if pn.get("tiktok"):
+                                st.markdown(f"**TikTok：** {pn['tiktok']}")
+                            if pn.get("douyin"):
+                                st.markdown(f"**抖音：** {pn['douyin']}")
+                    fk = f"c_{st.session_state.session_id}"
+                    if fk not in st.session_state.feedback_done:
+                        fa, fb, _ = st.columns([1, 1, 6])
+                        if fa.button("👍", key="fc_up"):
+                            _feedback_store().save(1, "合规排雷兵", st.session_state.image_name,
+                                json.dumps(d, ensure_ascii=False), st.session_state.session_id)
+                            st.session_state.feedback_done.add(fk); st.toast("感谢！", icon="👍")
+                        if fb.button("👎", key="fc_dn"):
+                            _feedback_store().save(0, "合规排雷兵", st.session_state.image_name,
+                                json.dumps(d, ensure_ascii=False), st.session_state.session_id)
+                            st.session_state.feedback_done.add(fk); st.toast("Bad Case 已记录", icon="📌")
+                else:
+                    st.error(f"Agent 3 失败: {wf.compliance.error if wf.compliance else '未运行'}")
 
-        # 历史统计
-        st.markdown("---")
-        st.markdown(
-            '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.15em;'
-            'color:#7C8FA6;margin-bottom:4px;">// HISTORY STATS</div>'
-            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:12px;">'
-            '分析历史统计</div>',
-            unsafe_allow_html=True
-        )
-        try:
-            hs = _history_store().get_stats()
-            h1,h2,h3 = st.columns(3)
-            h1.metric("总分析次数", hs["total"])
-            h2.metric("平均置信度", f"{hs['avg_confidence']}/100")
-            h3.metric("风险分布",
-                      " · ".join(f"{k}: {v}" for k,v in hs["risk_distribution"].items()) or "—")
-        except Exception:
-            pass
+            # 爆款公式（批量分析后附加显示）
+            _has_synthesis = st.session_state.get("synthesis_result") is not None
+            if _has_synthesis:
+                _sr = st.session_state.synthesis_result
+                if _sr and _sr.success:
+                    st.markdown("---")
+                    _sd = _sr.data
+                    _syn_gradient = (
+                        "background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.10));"
+                        "border:1px solid rgba(168,85,247,.28);border-radius:16px;"
+                        "padding:24px 28px;margin-bottom:20px;position:relative;overflow:hidden;"
+                    )
+                    st.markdown(
+                        f'<div style="{_syn_gradient}">'
+                        f'<div style="position:absolute;top:0;left:0;right:0;height:2px;'
+                        f'background:linear-gradient(90deg,#6366F1,#A855F7,#C084FC);"></div>'
+                        f'<div style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.18em;'
+                        f'color:#818CF8;margin-bottom:10px;">'
+                        f'// AGENT 5 · 爆款公式提炼师 · {_sd.get("sample_count","?")} 个样本</div>'
+                        f'<div style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:20px;'
+                        f'font-weight:800;color:#E2E8F0;margin-bottom:10px;">'
+                        f'{_sd.get("viral_formula","—")}</div>'
+                        f'<div style="font-size:13px;color:#7C8FA6;line-height:1.8;">'
+                        f'{_sd.get("executive_summary","—")}</div></div>',
+                        unsafe_allow_html=True
+                    )
+                    _hp = _sd.get("hook_patterns", [])
+                    if _hp:
+                        st.markdown(
+                            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:10px;">🎣 Hook 规律</div>',
+                            unsafe_allow_html=True
+                        )
+                        _hcols = st.columns(min(len(_hp), 3))
+                        for _hi, _h in enumerate(_hp):
+                            with _hcols[_hi % 3]:
+                                st.markdown(
+                                    f'<div class="glass" style="text-align:center;padding:16px;">'
+                                    f'<div style="font-size:22px;font-weight:800;color:#818CF8;'
+                                    f'font-family:\'Plus Jakarta Sans\',sans-serif;">{_h.get("frequency","?")}次</div>'
+                                    f'<div style="font-size:12px;font-weight:700;color:#E2E8F0;margin:4px 0;">{_h.get("pattern","—")}</div>'
+                                    f'<div style="font-size:11px;color:#7C8FA6;">{_h.get("example","—")}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True
+                                )
+                    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+                    _c1, _c2, _c3 = st.columns(3)
+                    for _col, (_ttl, _clr, _items) in zip(
+                        [_c1, _c2, _c3],
+                        [("👁 视觉规律", "#38BDF8", _sd.get("visual_rules", [])),
+                         ("📈 转化洞察", "#A855F7", _sd.get("conversion_insights", [])),
+                         ("🛡 合规注意", "#F43F5E", _sd.get("compliance_watch", []))]
+                    ):
+                        with _col:
+                            st.markdown(
+                                f'<div style="font-size:13px;font-weight:700;color:#E2E8F0;margin-bottom:8px;">{_ttl}</div>',
+                                unsafe_allow_html=True
+                            )
+                            for _itm in _items:
+                                st.markdown(
+                                    f'<div class="glass" style="padding:8px 12px;margin-bottom:6px;">'
+                                    f'<span style="color:{_clr};font-size:10px;">·</span> '
+                                    f'<span style="font-size:12px;color:#7C8FA6;">{_itm}</span></div>',
+                                    unsafe_allow_html=True
+                                )
+                    _recs = _sd.get("top_recommendations", [])
+                    if _recs:
+                        st.markdown(
+                            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin:16px 0 10px;">⚡ 优先行动建议</div>',
+                            unsafe_allow_html=True
+                        )
+                        for _r in sorted(_recs, key=lambda x: x.get("priority", 9)):
+                            _pri = _r.get("priority", "?")
+                            st.markdown(
+                                f'<div class="glass" style="padding:14px 18px;margin-bottom:8px;border-left:3px solid #6366F1;">'
+                                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+                                f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:#818CF8;'
+                                f'background:rgba(99,102,241,.12);padding:2px 8px;border-radius:4px;">P{_pri}</span>'
+                                f'<span style="font-size:13px;font-weight:700;color:#E2E8F0;">{_r.get("action","—")}</span>'
+                                f'</div>'
+                                f'<div style="font-size:11px;color:#7C8FA6;">{_r.get("reason","—")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                    _md_doc = _sd.get("methodology_doc", "")
+                    if _md_doc:
+                        with st.expander("📄 完整方法论文档（可复制给团队）"):
+                            st.markdown(_md_doc)
 
-    # ── Tab 4：智能问答（Intent Router）──────────────────────────────────────
-    with tab_chat:
         st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-        st.markdown("""
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-  <div style="width:3px;height:20px;border-radius:2px;background:#00C97A;flex-shrink:0;"></div>
-  <span style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.15em;color:#00C97A;">INTENT ROUTER</span>
-  <span style="font-size:15px;font-weight:700;color:#E2E8F0;">智能问答</span>
-</div>
-<div style="font-size:11px;color:#3D4F68;font-family:'DM Mono',monospace;margin-bottom:14px;">
-自动路由到对应 Agent 上下文 · confidence &lt; 70% 时显示「仅供参考」提示
-</div>""", unsafe_allow_html=True)
 
-        for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+        # ── 区块 3：发布建议（折叠，默认收起）────────────────────────────────────
+        with st.expander("🚀 发布建议", expanded=False):
+            st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+            _render_strategy_card(wf)
 
-        if user_q := st.chat_input("输入问题，例如：帮我把脚本 Hook 改得更有冲击力"):
-            st.session_state.chat_history.append({"role":"user","content":user_q})
-            with st.chat_message("user"):
-                st.markdown(user_q)
+            # 今天可以做的 3 件事
+            st.markdown(
+                '<div style="font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:700;'
+                'font-size:15px;color:#E2E8F0;margin:20px 0 12px;">✅ 今天可以做的 3 件事</div>',
+                unsafe_allow_html=True
+            )
+            _today_tasks: list = []
 
-            if not st.session_state.api_key:
-                with st.chat_message("assistant"):
-                    st.warning("请先在侧边栏填入 OpenAI API Key")
-            else:
-                with st.chat_message("assistant"):
-                    with st.spinner("意图路由中..."):
-                        intent, context, confidence = _route_intent(user_q, wf)
+            if _d_co:
+                _all_sc = _d_co.get("scripts", [])
+                if _all_sc:
+                    _bh = _all_sc[0].get("hook", "")
+                    if _bh:
+                        _today_tasks.append({
+                            "action": f"用这个 Hook 开拍一条：「{_bh}」",
+                            "reason": "这是 VIRA 基于竞品爆款规律生成的最优开场，直接套用，风险最低",
+                        })
 
-                        from prompts import INTENT_ROUTER
-                        import openai
+            if wf.compliance and wf.compliance.success:
+                _viol_list = wf.compliance.data.get("violations", [])
+                if _viol_list:
+                    _v0 = _viol_list[0]
+                    _today_tasks.append({
+                        "action": f"把「{_v0.get('text','高风险词')}」改成安全表达",
+                        "reason": _v0.get("suggestion", "避免内容审核不通过"),
+                    })
+                else:
+                    _today_tasks.append({
+                        "action": "发布前过一遍合规清单，确认无违禁词",
+                        "reason": "本次合规扫描通过，养成发布前复核的好习惯",
+                    })
 
-                        sys_prompt = INTENT_ROUTER.format(context=context)
-                        history    = st.session_state.chat_history[-10:]
-                        messages   = [{"role":"system","content":sys_prompt}]
-                        for h in history[:-1]:
-                            messages.append({"role":h["role"],"content":h["content"]})
-                        messages.append({"role":"user","content":user_q})
+            if wf.strategy and wf.strategy.success:
+                _ki = wf.strategy.data.get("key_insights", [])
+                if _ki:
+                    _today_tasks.append({
+                        "action": _ki[0],
+                        "reason": "来自 Agent 4 策略执行官的核心战略判断，优先执行",
+                    })
 
-                        try:
-                            oa   = openai.OpenAI(api_key=st.session_state.api_key)
-                            resp = oa.chat.completions.create(
-                                model=st.session_state.model,
-                                messages=messages, max_tokens=900, temperature=0.5,
-                            )
-                            answer = resp.choices[0].message.content
-                            if confidence < 0.7:
-                                answer = f"⚠️ **结果仅供参考，请结合人工复核**\n\n{answer}"
-                            full = answer + (
-                                f"\n\n---\n<small>路由：{intent} · "
-                                f"置信度 {confidence:.0%}</small>"
-                            )
-                            st.markdown(full, unsafe_allow_html=True)
-                            st.session_state.chat_history.append(
-                                {"role":"assistant","content":full})
-                        except Exception as e:
-                            err = f"❌ API 请求失败：{e}"
-                            st.error(err)
-                            st.session_state.chat_history.append(
-                                {"role":"assistant","content":err})
-                            logger.error("Chat error: %s", e)
+            while len(_today_tasks) < 3:
+                _today_tasks.append({
+                    "action": "对标竞品找一个新的测试方向",
+                    "reason": "基于本次分析，先跑小量素材验证数据再扩量",
+                })
+
+            _task_circles = ["①", "②", "③"]
+            for _ti, _tk in enumerate(_today_tasks[:3]):
+                st.markdown(
+                    f'<div style="display:flex;gap:14px;padding:14px 18px;margin-bottom:10px;'
+                    f'background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.15);'
+                    f'border-left:3px solid #6366F1;border-radius:10px;">'
+                    f'<div style="font-size:20px;line-height:1.4;color:#818CF8;flex-shrink:0;font-weight:700;">'
+                    f'{_task_circles[_ti]}</div>'
+                    f'<div>'
+                    f'<div style="font-size:14px;font-weight:600;color:#E2E8F0;margin-bottom:5px;line-height:1.5;">'
+                    f'{_tk["action"]}</div>'
+                    f'<div style="font-size:12px;color:#7C8FA6;line-height:1.5;">'
+                    f'→ {_tk["reason"]}</div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True
+                )
+
+        st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+
+        # ── 区块 4：开发者视图 + 智能问答 ──────────────────────────────────────────
+        _tab_dev, _tab_chat = st.tabs(["🔧 开发者视图", "💬 智能问答"])
+
+        with _tab_dev:
+            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+                '<div style="width:3px;height:20px;border-radius:2px;background:#6366F1;flex-shrink:0;"></div>'
+                '<span style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.15em;color:#6366F1;">DEVELOPER</span>'
+                '<span style="font-size:15px;font-weight:700;color:#E2E8F0;">Trace &amp; Raw Output</span>'
+                '</div>'
+                '<div style="font-size:11px;color:#3D4F68;margin-bottom:16px;font-family:\'DM Mono\',monospace;">'
+                '原始 API 响应 · Token 消耗 · 后端执行延迟 · 并发架构说明</div>',
+                unsafe_allow_html=True
+            )
+
+            dv1, dv2, dv3 = st.columns(3)
+            dv1.metric("总 Token 消耗", f"{wf.total_tokens:,}")
+            dv2.metric("端到端延迟",    f"{wf.total_elapsed_ms}ms")
+            dv3.metric("并发架构",      "asyncio.gather (A1‖A3) → A2 → A4")
+
+            st.markdown(
+                '<div class="glass" style="margin-top:12px;border-left:2px solid #6366F1;">'
+                '<div style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.15em;'
+                'color:#6366F1;margin-bottom:10px;">// asyncio.gather 并发策略</div>'
+                '<div style="font-size:12px;color:#7C8FA6;line-height:1.9;">'
+                '<span style="color:#E2E8F0;">Phase 1：</span>'
+                '<code style="background:rgba(99,102,241,.10);color:#6366F1;padding:1px 6px;'
+                'border-radius:4px;font-family:\'DM Mono\',monospace;">'
+                'asyncio.gather(asyncio.to_thread(A1), asyncio.to_thread(A3))'
+                '</code><br>'
+                'A1/A3 各自在独立线程发出 OpenAI HTTP 请求，event loop 挂起等待，无阻塞。<br>'
+                '<span style="color:#E2E8F0;">Phase 2：</span>A2 串行等待 A1 视觉结果（RAG 上下文依赖）<br>'
+                '<span style="color:#E2E8F0;">Phase 3：</span>A4 串行汇总三路输出，输出最终战略裁决'
+                '</div></div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown("---")
+
+            agent_map = [
+                ("Agent 1 · 视觉拆解师", wf.visual,     "#60A5FA"),
+                ("Agent 2 · 转化精算师", wf.commerce,   "#A855F7"),
+                ("Agent 3 · 合规排雷兵", wf.compliance, "#F43F5E"),
+                ("Agent 4 · 策略执行官", wf.strategy,   "#6366F1"),
+            ]
+            for label, r, color in agent_map:
+                if r:
+                    state = "✅ SUCCESS" if r.success else "❌ FAILED"
+                    with st.expander(f"📡 {label} — {state}"):
+                        if r.usage:
+                            u = r.usage
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric("Prompt Tokens",     u.get("prompt_tokens", "—"))
+                            c2.metric("Completion Tokens", u.get("completion_tokens", "—"))
+                            c3.metric("Total Tokens",      u.get("total_tokens", "—"))
+                            c4.metric("API 延迟",           f"{u.get('elapsed_ms','—')}ms")
+                        st.markdown(
+                            f'<div style="font-family:\'DM Mono\',monospace;font-size:9px;'
+                            f'letter-spacing:.14em;color:{color};margin:10px 0 6px;">// RAW RESPONSE</div>',
+                            unsafe_allow_html=True
+                        )
+                        st.markdown(
+                            f'<div class="dev-raw">{r.raw_response or "(空)"}</div>',
+                            unsafe_allow_html=True)
+
+            st.markdown("---")
+            st.markdown(
+                '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.15em;'
+                'color:#FF3D55;margin-bottom:4px;">// RISK DICTIONARY</div>'
+                '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:4px;">'
+                'Agent 3 内置风控字典</div>'
+                '<div style="font-size:11px;color:#3D4F68;font-family:\'DM Mono\',monospace;'
+                'margin-bottom:12px;">TikTok Brand Risk Dictionary v1.0 · 每次扫描完整注入 Prompt</div>',
+                unsafe_allow_html=True
+            )
+            try:
+                from core.agents import TIKTOK_RISK_DICT
+                for cat, terms in TIKTOK_RISK_DICT.items():
+                    with st.expander(f"▸ {cat}（{len(terms)} 条）"):
+                        st.markdown("、".join(f"`{t}`" for t in terms))
+            except Exception:
+                pass
+
+            st.markdown("---")
+            st.markdown(
+                '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.15em;'
+                'color:#7C8FA6;margin-bottom:4px;">// EXPORT</div>'
+                '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:12px;">'
+                'Bad Case 导出（SFT 数据回流）</div>',
+                unsafe_allow_html=True
+            )
+            if st.button("生成 bad_cases.json"):
+                try:
+                    bad = _feedback_store().export_bad_cases()
+                    st.download_button(
+                        "⬇️ 下载 bad_cases.json",
+                        data=json.dumps(bad, ensure_ascii=False, indent=2),
+                        file_name="bad_cases.json", mime="application/json",
+                    )
+                except Exception as e:
+                    st.error(f"导出失败：{e}")
+
+            st.markdown("---")
+            st.markdown(
+                '<div style="font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.15em;'
+                'color:#7C8FA6;margin-bottom:4px;">// HISTORY STATS</div>'
+                '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:12px;">'
+                '分析历史统计</div>',
+                unsafe_allow_html=True
+            )
+            try:
+                hs = _history_store().get_stats()
+                h1, h2, h3 = st.columns(3)
+                h1.metric("总分析次数", hs["total"])
+                h2.metric("平均置信度", f"{hs['avg_confidence']}/100")
+                h3.metric("风险分布",
+                          " · ".join(f"{k}: {v}" for k, v in hs["risk_distribution"].items()) or "—")
+            except Exception:
+                pass
+
+        with _tab_chat:
+            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+                '<div style="width:3px;height:20px;border-radius:2px;background:#00C97A;flex-shrink:0;"></div>'
+                '<span style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:.15em;color:#00C97A;">INTENT ROUTER</span>'
+                '<span style="font-size:15px;font-weight:700;color:#E2E8F0;">智能问答</span>'
+                '</div>'
+                '<div style="font-size:11px;color:#3D4F68;font-family:\'DM Mono\',monospace;margin-bottom:14px;">'
+                '自动路由到对应 Agent 上下文 · confidence &lt; 70% 时显示「仅供参考」提示</div>',
+                unsafe_allow_html=True
+            )
+
+            for msg in st.session_state.chat_history:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+
+            if user_q := st.chat_input("输入问题，例如：帮我把脚本 Hook 改得更有冲击力"):
+                st.session_state.chat_history.append({"role": "user", "content": user_q})
+                with st.chat_message("user"):
+                    st.markdown(user_q)
+
+                if not get_api_key():
+                    with st.chat_message("assistant"):
+                        st.warning("AI 分析服务暂不可用，请联系管理员")
+                else:
+                    with st.chat_message("assistant"):
+                        with st.spinner("意图路由中..."):
+                            intent, context, confidence = _route_intent(user_q, wf)
+
+                            from prompts import INTENT_ROUTER
+                            import openai
+
+                            sys_prompt = INTENT_ROUTER.format(context=context)
+                            history    = st.session_state.chat_history[-10:]
+                            messages   = [{"role": "system", "content": sys_prompt}]
+                            for h in history[:-1]:
+                                messages.append({"role": h["role"], "content": h["content"]})
+                            messages.append({"role": "user", "content": user_q})
+
+                            try:
+                                oa   = openai.OpenAI(api_key=get_api_key())
+                                resp = oa.chat.completions.create(
+                                    model=st.session_state.model,
+                                    messages=messages, max_tokens=900, temperature=0.5,
+                                )
+                                answer = resp.choices[0].message.content
+                                if confidence < 0.7:
+                                    answer = f"⚠️ **结果仅供参考，请结合人工复核**\n\n{answer}"
+                                full = answer + (
+                                    f"\n\n---\n<small>路由：{intent} · "
+                                    f"置信度 {confidence:.0%}</small>"
+                                )
+                                st.markdown(full, unsafe_allow_html=True)
+                                st.session_state.chat_history.append(
+                                    {"role": "assistant", "content": full})
+                            except Exception as e:
+                                err = f"❌ API 请求失败：{e}"
+                                st.error(err)
+                                st.session_state.chat_history.append(
+                                    {"role": "assistant", "content": err})
+                                logger.error("Chat error: %s", e)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+
+    # ── Agent E 趋势分析解锁入口 ──────────────────────────────────────────────────
+    if st.session_state.workflow_result:
+        _a_count = st.session_state.get("analysis_count", 0)
+        if _a_count >= 3:
+            st.markdown("---")
+            _trend_col1, _trend_col2, _trend_col3 = st.columns([1, 2, 1])
+            with _trend_col2:
+                st.markdown(f"""
+    <div style="text-align:center;padding:4px 0 8px;">
+      <div style="font-size:9px;color:#FCD34D;font-family:'DM Mono',monospace;
+        letter-spacing:.14em;margin-bottom:6px;">AGENT E · 趋势提炼师 · 已解锁</div>
+      <div style="font-size:16px;font-weight:800;color:#FEF3C7;margin-bottom:4px;">
+        🔍 赛道趋势分析已解锁
+      </div>
+      <div style="font-size:12px;color:rgba(255,255,255,.45);">
+        你已分析 <b style="color:#FCD34D;">{_a_count}</b> 个竞品，
+        Agent E 可以帮你提炼赛道爆款规律
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+                _trend_done = st.session_state.get("trend_result") is not None
+                _trend_btn_label = "✅ 已生成赛道趋势报告" if _trend_done else "✦ 生成赛道趋势报告"
+                if st.button(_trend_btn_label, use_container_width=True,
+                             key="run_trend_agent_btn", type="primary",
+                             disabled=(not get_api_key())):
+                    _cat = ""
+                    try:
+                        from services.brand_kb import get_active_brand as _gab
+                        _ab = _gab(st.session_state.get("user_email", ""))
+                        if _ab:
+                            _cat = _ab.get("category", "")
+                    except Exception:
+                        pass
+                    with st.spinner("Agent E 趋势提炼师分析中..."):
+                        st.session_state.trend_result = run_trend_agent(
+                            st.session_state.get("all_results", []),
+                            _cat,
+                        )
+                    st.rerun()
+        else:
+            _remaining = 3 - st.session_state.get("analysis_count", 0)
+            if _remaining > 0:
+                st.caption(f"💡 再分析 {_remaining} 个竞品，解锁 Agent E · 赛道趋势分析")
+
+        if st.session_state.get("trend_result"):
+            render_trend_report(st.session_state.trend_result)
+
+        # ── 整体评价（页面最底部）──────────────────────────────────────────────
+        st.markdown(
+            '<hr class="vira-hr" style="margin:24px 0 14px;">',
+            unsafe_allow_html=True,
+        )
+        st.markdown("**这次分析整体有帮助吗？**")
+        _ov_c1, _ov_c2, _ov_c3 = st.columns(3)
+        with _ov_c1:
+            if st.button("😊 有帮助", key="overall_good"):
+                log_feedback("overall", "positive")
+                st.success("谢谢！")
+        with _ov_c2:
+            if st.button("😐 一般", key="overall_ok"):
+                log_feedback("overall", "neutral")
+                st.info("我们会继续改进")
+        with _ov_c3:
+            if st.button("😞 没帮助", key="overall_bad"):
+                log_feedback("overall", "negative")
+                st.warning("很抱歉！点击上方脚本的「这套有问题」告诉我们原因")
+
+
+    # ══════════════════════════════════════════════════════════════════════════════
+
 # AI 客服助理（右下角悬浮 · 仿 Intercom 风格）
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -4041,7 +5847,7 @@ if st.session_state.get("cs_open", False):
         with st.chat_message("user"):
             st.markdown(_cs_q)
 
-        if not st.session_state.api_key:
+        if not get_api_key():
             _cs_ans = "AI 客服暂时不可用，请稍后再试"
             cs_history.append({"role": "assistant", "content": _cs_ans})
             with st.chat_message("assistant"):
@@ -4051,7 +5857,7 @@ if st.session_state.get("cs_open", False):
                 with st.spinner("思考中..."):
                     try:
                         import openai as _oa
-                        _cs_client = _oa.OpenAI(api_key=st.session_state.api_key)
+                        _cs_client = _oa.OpenAI(api_key=get_api_key())
                         _cs_msgs   = [{"role": "system", "content": _CS_FAQ}]
                         for _h in cs_history[-8:]:
                             _cs_msgs.append({"role": _h["role"], "content": _h["content"]})

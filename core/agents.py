@@ -216,18 +216,20 @@ class CommerceOptimizerAgent(BaseAgent):
         self,
         image_data: bytes,
         visual_result: Optional[Dict[str, Any]] = None,
+        brand_context: str = "",
     ) -> AgentResult:
         """
         生成品牌专属商业脚本。
 
         Args:
-            image_data:    图片字节（用于 Vision 补充分析）
-            visual_result: Agent 1 输出的 data 字典（可为 None，降级处理）
+            image_data:     图片字节（用于 Vision 补充分析）
+            visual_result:  Agent 1 输出的 data 字典（可为 None，降级处理）
+            brand_context:  品牌知识库格式化文本（来自 services.brand_kb.format_brand_context）
 
         Returns:
             AgentResult，data 包含 scripts 列表等
         """
-        logger.info("[%s] start commerce optimization", self.name)
+        logger.info("[%s] start commerce optimization | has_brand=%s", self.name, bool(brand_context))
 
         # 构建 Agent 1 摘要（若 Agent 1 成功则注入，否则提示模型独立分析）
         if visual_result:
@@ -254,16 +256,20 @@ class CommerceOptimizerAgent(BaseAgent):
         user_message = (
             f"{visual_summary}\n\n"
             f"{rag_context}\n\n"
-            "请根据以上视觉分析和品牌知识库，生成3套高转化商业脚本。"
+            "请根据以上视觉分析和品牌知识库，生成3套专属拍摄脚本。"
             "严格按 System Prompt 要求输出 JSON，不要有任何额外文字。"
         )
 
+        # 将品牌知识库注入 system prompt（若无则使用通用模式说明）
+        brand_section = brand_context if brand_context else "【品牌知识库】未提供，使用通用模式分析，脚本不含特定品牌信息。"
+        system_prompt = prompts.COMMERCE_OPTIMIZER.format(brand_context=brand_section)
+
         result = self._call(
-            system_prompt=prompts.COMMERCE_OPTIMIZER,
+            system_prompt=system_prompt,
             user_message=user_message,
             image_data=image_data,
-            max_tokens=2000,
-            temperature=0.5,  # 脚本创作需要更多创意
+            max_tokens=2500,
+            temperature=0.5,
         )
 
         if result.success:

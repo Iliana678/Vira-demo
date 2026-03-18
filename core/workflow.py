@@ -90,10 +90,11 @@ class VIRAWorkflow:
         result = workflow.run(image_data, on_agent_complete=my_callback)
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o", rag_text: str = ""):
+    def __init__(self, api_key: str, model: str = "gpt-4o", rag_text: str = "", brand_context: str = ""):
         # 单 client 实例，openai SDK 内部 httpx 连接池线程安全
-        self.client = OpenAIClient(api_key=api_key, model=model)
-        self.rag    = RAGService(knowledge_text=rag_text)
+        self.client        = OpenAIClient(api_key=api_key, model=model)
+        self.rag           = RAGService(knowledge_text=rag_text)
+        self.brand_context = brand_context
 
         self.agent_visual     = VisualAnalystAgent(self.client)
         self.agent_commerce   = CommerceOptimizerAgent(self.client, self.rag)
@@ -165,8 +166,12 @@ class VIRAWorkflow:
                 on_agent_complete("compliance", r_compliance)
 
             # ── Phase 2：Agent 2 串行（依赖 Agent 1 视觉输出）────────────────
-            visual_data       = r_visual.data if r_visual.success else None
-            result.commerce   = self.agent_commerce.run(image_data, visual_result=visual_data)
+            visual_data     = r_visual.data if r_visual.success else None
+            result.commerce = self.agent_commerce.run(
+                image_data,
+                visual_result=visual_data,
+                brand_context=self.brand_context,
+            )
 
             logger.info("Phase2 done | commerce.ok=%s", result.commerce.success)
             if on_agent_complete:
