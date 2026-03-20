@@ -31,6 +31,12 @@ from PIL import Image
 # ── 环境变量（.env 优先，CI/CD 传入的系统变量次之）──────────────────────────
 load_dotenv()
 
+# ── 埋点模块（延迟导入以防 DB 路径问题，但预热建表）──────────────────────────
+try:
+    import services.analytics as _analytics
+except Exception:
+    _analytics = None  # type: ignore
+
 
 # ── API Key 统一读取函数 ───────────────────────────────────────────────────────
 def get_api_key() -> str:
@@ -969,6 +975,17 @@ def _init_state() -> None:
 
 _init_state()
 
+# ── URL 参数路由（最先执行，在任何渲染前解析 mode）──────────────────────────
+# 用法：
+#   普通访问    →  /                  （显示 landing page）
+#   用户入口    →  /?mode=app          （跳过 landing，直接登录/分析）
+#   管理员入口  →  /?mode=admin        （管理员密码验证 → 数据后台）
+_url_mode = st.query_params.get("mode", "").lower()
+
+# ?mode=app：把 landing_passed 置 True，让鉴权守卫直接跳转登录页
+if _url_mode == "app" and not st.session_state.get("landing_passed"):
+    st.session_state.landing_passed = True
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 品牌知识库模块
@@ -1447,6 +1464,11 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
                     if _ok:
                         st.session_state.authenticated = True
                         st.session_state.user_info     = _info
+                        if _analytics:
+                            try:
+                                _analytics.record_auth(_email, "login")
+                            except Exception:
+                                pass
                         st.rerun()
                     else:
                         _msg_slot.error(_msg)
@@ -1531,6 +1553,11 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
                     if _ok:
                         _msg_slot.success("✅ 注册成功！已赠送 5 份免费报告额度，请登录")
                         st.session_state.auth_mode = "login"
+                        if _analytics:
+                            try:
+                                _analytics.record_auth(_email, "register")
+                            except Exception:
+                                pass
                         st.rerun()
                     else:
                         _msg_slot.error(_msg)
@@ -2593,12 +2620,279 @@ details.lp-faq p{font-size:13.5px;color:#6B7280;
 """, unsafe_allow_html=True)
 
 
+# ── ?mode=admin 专用密码验证页 ───────────────────────────────────────────────
+
+def _render_admin_gate_url() -> None:
+    """
+    ?mode=admin 路由专用的全屏密码验证页。
+    无需普通用户登录；密码正确后设置 admin_dashboard_open=True 并 rerun。
+    """
+    import hmac as _hmac_adm
+
+    # ── 输入框与错误提示的精细样式覆写（仅作用于 admin gate 范围）────────────
+    st.markdown("""
+<style>
+/* admin gate 密码输入框 */
+div[data-testid="stTextInput"][data-key="admin_gate_url_pw"] input {
+    background: rgba(255,255,255,0.9) !important;
+    border: 1.5px solid #6366F1 !important;
+    color: #1e1b4b !important;
+    border-radius: 10px !important;
+    font-size: 14px !important;
+}
+div[data-testid="stTextInput"][data-key="admin_gate_url_pw"] input::placeholder {
+    color: #6B7280 !important;
+}
+/* admin gate 错误提示覆写 */
+div[data-testid="stAlert"][kind="error"].admin-gate-err {
+    background: rgba(239,68,68,0.15) !important;
+    border: 1px solid rgba(239,68,68,0.3) !important;
+    color: #991b1b !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+    _, _mid, _ = st.columns([1, 2, 1])
+    with _mid:
+        # ── 容器卡片（毛玻璃背景）─────────────────────────────────────────
+        st.markdown(
+            '<div style="'
+            'margin-top:80px;'
+            'background:rgba(255,255,255,0.15);'
+            'backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);'
+            'border:1px solid rgba(255,255,255,0.25);'
+            'border-radius:20px;'
+            'padding:40px 36px 32px;'
+            'box-shadow:0 8px 32px rgba(99,102,241,0.12);'
+            '">'
+            # 标题行
+            '<div style="text-align:center;margin-bottom:28px;">'
+            '<div style="font-family:\'DM Mono\',monospace;font-size:11px;'
+            'color:#1e1b4b;letter-spacing:.16em;font-weight:700;margin-bottom:10px;">'
+            '// VIRA ADMIN</div>'
+            '<div style="font-size:26px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">'
+            '⚙ 管理员验证</div>'
+            '<div style="font-size:12px;color:#4c1d95;margin-bottom:0;">'
+            '请输入管理员密码继续</div>'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _pw = st.text_input(
+            "管理员密码", type="password",
+            placeholder="输入管理员密码…",
+            key="admin_gate_url_pw",
+            label_visibility="collapsed",
+        )
+
+        _err = st.empty()
+
+        if st.button("进入后台 →", type="primary", use_container_width=True,
+                     key="admin_gate_url_submit"):
+            _correct = (
+                st.secrets.get("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+            ).strip()
+            if _correct and _hmac_adm.compare_digest(_pw.strip(), _correct):
+                st.session_state.admin_dashboard_open = True
+                st.rerun()
+            else:
+                _err.markdown(
+                    '<div style="'
+                    'background:rgba(239,68,68,0.15);'
+                    'border:1px solid rgba(239,68,68,0.3);'
+                    'color:#991b1b;'
+                    'border-radius:8px;'
+                    'padding:10px 14px;'
+                    'font-size:13px;font-weight:600;'
+                    'margin-top:8px;'
+                    '">🔒 密码错误，请重试</div>',
+                    unsafe_allow_html=True,
+                )
+
+
 # ── 鉴权守卫 ──────────────────────────────────────────────────────────────────
-if not st.session_state.authenticated:
+# ?mode=admin 路由完全绕过普通用户鉴权，由专用密码验证页把守
+if not st.session_state.authenticated and _url_mode != "admin":
     if not st.session_state.get("landing_passed", False):
         _render_landing_page()
     else:
         _render_auth_page()
+    st.stop()
+
+# ?mode=admin：尚未验证 → 显示密码页；已验证 → 落穿到下方 admin_dashboard_open 检查
+if _url_mode == "admin" and not st.session_state.get("admin_dashboard_open", False):
+    _render_admin_gate_url()
+    st.stop()
+
+
+# ── 管理员后台仪表盘（密码通过后全屏展示，替代主 App 内容）────────────────────
+
+def _render_admin_dashboard() -> None:
+    """管理员专属数据仪表盘，4 个 tab 展示系统埋点数据。"""
+    import csv
+    import io as _io
+
+    st.markdown(
+        '<div style="font-family:\'DM Mono\',monospace;font-size:11px;'
+        'color:#818CF8;letter-spacing:.12em;margin-bottom:4px;">// ADMIN DASHBOARD</div>'
+        '<div style="font-size:22px;font-weight:800;color:#E2E8F0;margin-bottom:18px;">'
+        '⚙ VIRA 管理员后台</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.button("← 返回主界面", key="admin_back"):
+        st.session_state.admin_dashboard_open = False
+        # ?mode=admin 路由：退出后跳转到 /?mode=app，避免再次触发密码页
+        if st.query_params.get("mode", "").lower() == "admin":
+            st.query_params["mode"] = "app"
+        st.rerun()
+
+    st.divider()
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 使用概览", "🔬 质量监控", "👥 用户行为", "📋 原始日志"])
+
+    # ── Tab1 使用概览 ─────────────────────────────────────────────────────────
+    with tab1:
+        if not _analytics:
+            st.warning("analytics 模块未加载")
+        else:
+            summary = _analytics.get_summary()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("今日分析次数", summary["today"])
+            c2.metric("本周分析次数", summary["week"])
+            c3.metric("累计分析次数", summary["total"])
+
+            st.markdown("#### 日活用户趋势（近 14 天）")
+            dau = _analytics.get_dau_trend(14)
+            if dau:
+                import pandas as _pd_mod
+                _dau_df = _pd_mod.DataFrame(dau).set_index("date")
+                st.line_chart(_dau_df["dau"])
+            else:
+                st.caption("暂无数据")
+
+            st.markdown("#### 平均分析耗时趋势（ms，近 14 天）")
+            time_trend = _analytics.get_avg_time_trend(14)
+            if time_trend:
+                import pandas as _pd_mod
+                _tt_df = _pd_mod.DataFrame(time_trend).set_index("date")
+                st.line_chart(_tt_df["avg_ms"])
+            else:
+                st.caption("暂无数据")
+
+    # ── Tab2 质量监控 ─────────────────────────────────────────────────────────
+    with tab2:
+        if not _analytics:
+            st.warning("analytics 模块未加载")
+        else:
+            agent_times = _analytics.get_agent_timings()
+            err_rate    = _analytics.get_json_error_rate()
+            ref_rate    = _analytics.get_reflection_rate()
+            conf_dist   = _analytics.get_confidence_distribution()
+
+            if agent_times:
+                st.markdown("#### 各 Agent 平均耗时（ms）")
+                import pandas as _pd_mod
+                _at_df = _pd_mod.DataFrame(
+                    {"Agent": list(agent_times.keys()), "耗时(ms)": list(agent_times.values())}
+                ).set_index("Agent")
+                st.bar_chart(_at_df["耗时(ms)"])
+            else:
+                st.caption("Agent 耗时暂无数据")
+
+            st.divider()
+            _qc1, _qc2 = st.columns(2)
+            _qc1.metric("JSON 解析失败率", f"{err_rate * 100:.1f}%",
+                        help="失败率高说明模型输出不稳定，可考虑加强 prompt 约束")
+            _qc2.metric("Reflection 触发率", f"{ref_rate * 100:.1f}%",
+                        help="触发说明首次输出质量不达标；触发率低代表模型输出质量稳定")
+
+            if conf_dist:
+                st.divider()
+                st.markdown("#### success_confidence 分布")
+                import pandas as _pd_mod
+                _cd_df = _pd_mod.DataFrame({"confidence": conf_dist})
+                _bins = list(range(0, 110, 10))
+                _cd_df["区间"] = _pd_mod.cut(
+                    _cd_df["confidence"], bins=_bins,
+                    labels=[f"{i}-{i+9}" for i in range(0, 100, 10)],
+                    right=True,
+                )
+                _hist = _cd_df["区间"].value_counts().sort_index()
+                st.bar_chart(_hist)
+            else:
+                st.caption("confidence 分布暂无数据")
+
+    # ── Tab3 用户行为 ─────────────────────────────────────────────────────────
+    with tab3:
+        if not _analytics:
+            st.warning("analytics 模块未加载")
+        else:
+            total_users = _analytics.get_total_users()
+            export_info = _analytics.get_export_rate()
+            rankings    = _analytics.get_user_rankings(20)
+
+            _ub1, _ub2, _ub3 = st.columns(3)
+            _ub1.metric("注册用户总数", total_users)
+            _ub2.metric("累计分析次数", export_info["analyses"])
+            _ub3.metric("报告导出率", f"{export_info['rate'] * 100:.1f}%",
+                        help="分析了但未导出的用户占多数时可以考虑优化导出引导")
+
+            if rankings:
+                st.markdown("#### 使用次数排行（Top 20）")
+                import pandas as _pd_mod
+                _rank_df = _pd_mod.DataFrame(rankings)
+                _rank_df.index = range(1, len(_rank_df) + 1)
+                _rank_df.columns = ["邮箱", "分析次数"]
+                st.bar_chart(_rank_df.set_index("邮箱")["分析次数"])
+                with st.expander("查看详细列表"):
+                    st.dataframe(_rank_df, use_container_width=True)
+            else:
+                st.caption("用户使用数据暂无")
+
+    # ── Tab4 原始日志 ─────────────────────────────────────────────────────────
+    with tab4:
+        if not _analytics:
+            st.warning("analytics 模块未加载")
+        else:
+            _col_date, _col_limit = st.columns([2, 1])
+            with _col_date:
+                _filter_date = st.date_input(
+                    "按日期筛选（留空=全部）",
+                    value=None, key="admin_log_date",
+                )
+            with _col_limit:
+                _log_limit = st.number_input(
+                    "显示条数", min_value=10, max_value=200, value=50,
+                    key="admin_log_limit",
+                )
+
+            _date_str = str(_filter_date) if _filter_date else None
+            logs = _analytics.get_raw_logs(limit=int(_log_limit), date_filter=_date_str)
+
+            if logs:
+                import pandas as _pd_mod
+                _log_df = _pd_mod.DataFrame(logs)
+                st.dataframe(_log_df, use_container_width=True, height=400)
+
+                # 一键导出 CSV
+                _csv_buf = _io.StringIO()
+                _log_df.to_csv(_csv_buf, index=False)
+                st.download_button(
+                    "⬇️ 导出 CSV",
+                    data=_csv_buf.getvalue().encode("utf-8-sig"),
+                    file_name="vira_analytics_logs.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="admin_export_csv",
+                )
+            else:
+                st.caption("暂无日志数据")
+
+
+if st.session_state.get("admin_dashboard_open", False):
+    _render_admin_dashboard()
     st.stop()
 
 
@@ -2989,12 +3283,11 @@ def _render_strategy_card(wf) -> None:
         return
 
     d        = wf.strategy.data
-    score    = d.get("confidence_score", 0)
-    verdict  = d.get("verdict", "—")
-    ab       = d.get("ab_test", {})
-    summary  = d.get("executive_summary", "—")
-    warning  = d.get("risk_warning", "")
-    insights = d.get("key_insights", [])
+    score    = d.get("success_confidence", 0)
+    verdict  = d.get("final_verdict", "—")
+    ab       = d.get("ab_test_plan", {})
+    summary  = d.get("final_verdict", "—")
+    insights = d.get("top3_improvements", [])
 
     # 置信度颜色（深色主题语义化：绿/金/红）
     if score >= 75:
@@ -3005,6 +3298,36 @@ def _render_strategy_card(wf) -> None:
         clr, bg, bd = "#FF3D55", "rgba(255,61,85,.08)",  "rgba(255,61,85,.30)"
 
     st.markdown("---")
+
+    # ── Self-Reflection 标识（Agent 4）────────────────────────────────────────
+    _strategy_reflected = getattr(wf.strategy, "reflected", False)
+    _strategy_issues    = getattr(wf.strategy, "critic_issues", [])
+    if _strategy_reflected:
+        _issues_html = ""
+        if _strategy_issues:
+            _issues_html = (
+                '<div style="border-top:1px solid rgba(99,102,241,.2);margin-top:8px;padding-top:8px;">'
+                + "".join(
+                    f'<div style="font-size:11px;color:#818CF8;padding:2px 0;">'
+                    f'<span style="color:#F0A500;">·</span> {_ci}</div>'
+                    for _ci in _strategy_issues
+                )
+                + '</div>'
+            )
+        st.markdown(
+            f'<div style="display:inline-flex;flex-direction:column;gap:4px;'
+            f'background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.30);'
+            f'border-radius:10px;padding:8px 14px;margin-bottom:12px;">'
+            f'<div style="display:flex;align-items:center;gap:6px;">'
+            f'<span style="font-size:12px;">✦</span>'
+            f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;'
+            f'letter-spacing:.14em;color:#818CF8;font-weight:700;">SELF-REFLECTION · 已修正</span>'
+            f'</div>'
+            f'{_issues_html}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown(f"""
 <div style="background:{bg};border:1px solid {bd};border-top:2px solid {clr};
             border-radius:14px;padding:26px 30px;margin:8px 0 20px;position:relative;overflow:hidden;">
@@ -3040,54 +3363,39 @@ def _render_strategy_card(wf) -> None:
             'font-size:15px;color:#E2E8F0;margin:12px 0 10px;">🧪 A/B Test 实验设计</div>',
             unsafe_allow_html=True
         )
-        ctrl, test = ab.get("control_group", {}), ab.get("test_group", {})
         c1, c2 = st.columns(2)
         with c1:
-            keeps = "".join(
-                f'<div style="margin:4px 0;color:#E2E8F0;font-size:12px;">✓ {el}</div>'
-                for el in ctrl.get("keep_elements", [])
-            )
             st.markdown(f"""
 <div class="glass" style="border-left:2px solid #38BDF8;">
   <div style="font-size:9px;color:#38BDF8;font-family:'DM Mono',monospace;
               letter-spacing:.14em;margin-bottom:10px;font-weight:700;">
-    // CONTROL GROUP · 保留元素</div>
-  <div style="font-size:12px;color:#7C8FA6;margin-bottom:8px;">{ctrl.get('description','—')}</div>
-  <div>{keeps}</div>
-  <div style="font-size:11px;color:#3D4F68;margin-top:10px;
-              border-top:1px solid rgba(255,255,255,.06);padding-top:8px;">
-    保留原因：{ctrl.get('rationale','—')}</div>
+    // CONTROL GROUP · 对照组</div>
+  <div style="font-size:13px;color:#7C8FA6;line-height:1.75;">
+    {ab.get('control_group','—')}</div>
 </div>""", unsafe_allow_html=True)
 
         with c2:
-            changes = "".join(
-                f'<div style="margin:4px 0;color:#E2E8F0;font-size:12px;">→ {el}</div>'
-                for el in test.get("change_elements", [])
-            )
             st.markdown(f"""
 <div class="glass" style="border-left:2px solid #6366F1;">
   <div style="font-size:9px;color:#6366F1;font-family:'DM Mono',monospace;
               letter-spacing:.14em;margin-bottom:10px;font-weight:700;">
-    // TEST GROUP · 改动假设</div>
-  <div style="font-size:12px;color:#7C8FA6;margin-bottom:8px;">{test.get('description','—')}</div>
-  <div>{changes}</div>
-  <div style="font-size:11px;color:#3D4F68;margin-top:10px;
-              border-top:1px solid rgba(100,140,255,.08);padding-top:8px;">
-    效果假设：{test.get('hypothesis','—')}</div>
+    // TEST GROUP · 实验组</div>
+  <div style="font-size:13px;color:#7C8FA6;line-height:1.75;">
+    {ab.get('test_group','—')}</div>
 </div>""", unsafe_allow_html=True)
 
         mc1, mc2 = st.columns(2)
         mc1.info(f"📊 **成功指标：** {ab.get('success_metric','—')}")
-        mc2.info(f"⏱ **测试周期：** {ab.get('test_duration','—')}")
+        mc2.info(f"⏱ **测试周期：** {ab.get('duration','—')}")
 
-    # 关键洞察
+    # 3条改进建议
     if insights:
         st.markdown(
             '<div style="font-family:\'Plus Jakarta Sans\',sans-serif;font-weight:700;'
-            'font-size:15px;color:#E2E8F0;margin:12px 0 10px;">💡 关键战略洞察</div>',
+            'font-size:15px;color:#E2E8F0;margin:12px 0 10px;">💡 Top 3 改进建议</div>',
             unsafe_allow_html=True
         )
-        for i, ins in enumerate(insights, 1):
+        for i, ins in enumerate(insights[:3], 1):
             st.markdown(
                 f'<div class="glass" style="padding:12px 18px;margin-bottom:8px;">'
                 f'<span style="color:#6366F1;font-family:\'DM Mono\',monospace;'
@@ -3095,9 +3403,6 @@ def _render_strategy_card(wf) -> None:
                 f'&nbsp;&nbsp;<span style="color:#7C8FA6;font-size:13px;">{ins}</span></div>',
                 unsafe_allow_html=True,
             )
-
-    if warning:
-        st.warning(f"⚠️ **风险提示：** {warning}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3389,7 +3694,7 @@ with st.sidebar:
                     rag_text        = st.session_state.rag_text,
                     description     = _tpl_desc,
                     tags            = [t for t in _tpl_tags.split(",") if t.strip()],
-                    viral_formula   = _syn.data.get("viral_formula", "") if _syn and _syn.success else "",
+                    viral_formula   = _syn.data.get("formula_name", "") if _syn and _syn.success else "",
                     created_by      = (st.session_state.get("user_info") or {}).get("email", ""),
                 )
                 st.session_state["_show_save_tpl"] = False
@@ -3463,7 +3768,7 @@ with st.sidebar:
                     f'<div class="hist-row">'
                     f'{risk_emoji} <b style="color:#111827;">{rec.get("image_name","—")[:20]}</b><br>'
                     f'<span style="color:#6B7280;font-size:10px;">{ts} · '
-                    f'置信度 {rec.get("confidence_score","—")} · '
+                    f'置信度 {rec.get("success_confidence","—")} · '
                     f'{rec.get("total_elapsed_ms","—")}ms</span>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -3491,6 +3796,38 @@ with st.sidebar:
         st.session_state.batch_results = []
         st.session_state.selected_frame_idx = 0
         st.rerun()
+
+    # ── 隐藏管理员入口（侧边栏底部，不显眼）─────────────────────────────────
+    st.markdown(
+        '<div style="margin-top:24px;border-top:1px solid rgba(255,255,255,.04);'
+        'padding-top:8px;"></div>',
+        unsafe_allow_html=True,
+    )
+    _adm_col, _ = st.columns([1, 4])
+    with _adm_col:
+        if st.button("⚙", key="admin_entry_btn",
+                     help="", use_container_width=True):
+            st.session_state["_admin_pw_open"] = not st.session_state.get("_admin_pw_open", False)
+            st.rerun()
+
+    if st.session_state.get("_admin_pw_open", False):
+        import hmac as _hmac_mod
+        _adm_pw_input = st.text_input(
+            "管理员密码", type="password", key="admin_pw_input",
+            label_visibility="collapsed", placeholder="输入管理员密码…",
+        )
+        if st.button("进入", key="admin_pw_submit", use_container_width=True):
+            _adm_pw_correct = (
+                st.secrets.get("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+            ).strip()
+            if _adm_pw_correct and _hmac_mod.compare_digest(
+                _adm_pw_input.strip(), _adm_pw_correct
+            ):
+                st.session_state.admin_dashboard_open = True
+                st.session_state["_admin_pw_open"]    = False
+                st.rerun()
+            else:
+                st.error("密码错误")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3769,50 +4106,28 @@ with _tab_attr:
         st.success("✅ 分析完成，找到你的爆款规律")
 
         st.markdown("### 🎯 你的品牌爆款公式")
-        for _aformula in _ar.get("brand_formulas", []):
-            with st.container():
-                st.markdown(f"**{_aformula.get('formula_name', '公式')}**")
-                if _aformula.get('formula_desc'):
-                    st.markdown(_aformula['formula_desc'])
-                st.code(_aformula.get('template', ''), language=None)
-
-        st.markdown("### 💡 下一条内容怎么做")
-        st.info(_ar.get("next_content_suggestion", "—"))
+        if _ar.get("formula_name"):
+            st.markdown(f"**{_ar['formula_name']}**")
+        if _ar.get("core_pattern"):
+            st.info(_ar["core_pattern"])
 
         with st.expander("📋 查看完整规律分析"):
             _ar_c1, _ar_c2 = st.columns(2)
             with _ar_c1:
-                st.markdown("**Hook 规律**")
-                for _ahook in _ar.get("hook_patterns", []):
-                    st.markdown(
-                        f"- {_ahook.get('type','—')}（{_ahook.get('frequency','—')}）：{_ahook.get('example','')}"
-                    )
-                st.markdown("")
-                st.markdown("**视觉规律**")
-                for _avis in _ar.get("visual_patterns", []):
-                    st.markdown(f"- {_avis}")
+                st.markdown("**🔁 可复用元素**")
+                for _el in _ar.get("reusable_elements", []):
+                    st.markdown(f"- {_el}")
             with _ar_c2:
-                st.markdown("**内容结构**")
-                st.markdown(_ar.get("content_structure", "—"))
-                st.markdown("")
-                st.markdown("**语言风格**")
-                for _alang in _ar.get("language_style", []):
-                    st.markdown(f"- {_alang}")
-                st.markdown("")
-                st.markdown("**差异化优势**")
-                st.markdown(_ar.get("unique_advantage", "—"))
-
-        _conf_raw = _ar.get("confidence", "中")
-        _conf_emoji = "✅" if _conf_raw.startswith("高") else ("⚠️" if _conf_raw.startswith("低") else "ℹ️")
-        st.caption(f"{_conf_emoji} 分析置信度：{_conf_raw}")
+                st.markdown("**🎯 适用场景**")
+                for _sc in _ar.get("applicable_scenarios", []):
+                    st.markdown(f"- {_sc}")
 
         st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
         if st.button("📌 将爆款规律加入品牌知识库（会话级）", key="save_attribution_to_kb"):
-            _formula_parts = [
-                f"{_f.get('formula_name','公式')}：{_f.get('template','')}"
-                for _f in _ar.get("brand_formulas", [])
-            ]
-            st.session_state["my_brand_formulas"] = "\n".join(_formula_parts)
+            _formula_text = (
+                f"{_ar.get('formula_name','公式')}：{_ar.get('core_pattern','')}"
+            )
+            st.session_state["my_brand_formulas"] = _formula_text
             st.success("✅ 已加入！下次竞品分析时，Agent 2 会自动参考你的爆款规律生成脚本。")
 
 # ── Tab 1：竞品分析（以下三个 with 块共同组成内容，Streamlit 支持重开同一 tab context）
@@ -3826,10 +4141,10 @@ with _tab_comp:
       <div class="slbl">实时分析仪表盘</div>
     </div>""", unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("HOOK 吸睛指数",   f"{_safe(wf,'visual','data','hook_score')}/100",    help="Agent 1 · Hook 质量评分")
-        m2.metric("带货转化潜力",     f"{_safe(wf,'commerce','data','conversion_potential')}/100", help="Agent 2 · 商业转化潜力")
-        m3.metric("合规风险等级",     str(_safe(wf,"compliance","data","risk_level")),     help="Agent 3 · LOW / MEDIUM / HIGH")
-        m4.metric("成功置信度",       f"{_safe(wf,'strategy','data','confidence_score')}/100", help="Agent 4 · 复刻成功综合置信度")
+        m1.metric("HOOK 吸睛指数",   f"{_safe(wf,'visual','data','hook_score')}/10",     help="Agent 1 · Hook 质量评分 (0-10)")
+        m2.metric("带货转化潜力",     f"{_safe(wf,'commerce','data','conversion_score')}/10", help="Agent 2 · 综合转化潜力 (0-10)")
+        m3.metric("合规风险等级",     str(_safe(wf,"compliance","data","risk_level")),     help="Agent 3 · 低 / 中 / 高")
+        m4.metric("成功置信度",       f"{_safe(wf,'strategy','data','success_confidence')}/100", help="Agent 4 · 复刻成功综合置信度")
         st.markdown('<hr class="vira-hr" style="margin:20px 0;">', unsafe_allow_html=True)
 
 
@@ -4287,6 +4602,15 @@ with _tab_comp:
 
                         if st.button(_btn_txt, type="primary",
                                      use_container_width=True, disabled=_blocked):
+                            # 埋点：上传图片
+                            if _analytics:
+                                try:
+                                    _analytics.record_upload(
+                                        user_email=(st.session_state.get("user_info") or {}).get("email", ""),
+                                        image_count=n,
+                                    )
+                                except Exception:
+                                    pass
                             from services.brand_kb import format_brand_context as _fmt_brand
                             _brand_ctx = _fmt_brand(_active_bp) if _active_bp else ""
                             if st.session_state.get("my_brand_formulas"):
@@ -4375,6 +4699,30 @@ with _tab_comp:
                                             "image_data": _raw_b,
                                             "result":     _wf_result,
                                         })
+                                        # 埋点：分析完成
+                                        if _analytics and _wf_result:
+                                            try:
+                                                _wfr = _wf_result
+                                                _sc_val = int((_wfr.strategy.data.get("success_confidence") or 0) if (_wfr.strategy and _wfr.strategy.success) else 0)
+                                                _analytics.record_analysis(
+                                                    user_email=(st.session_state.get("user_info") or {}).get("email", ""),
+                                                    total_ms=_wfr.total_elapsed_ms,
+                                                    agent1_ms=(_wfr.visual.elapsed_ms if _wfr.visual else 0),
+                                                    agent2_ms=(_wfr.commerce.elapsed_ms if _wfr.commerce else 0),
+                                                    agent3_ms=(_wfr.compliance.elapsed_ms if _wfr.compliance else 0),
+                                                    agent4_ms=(_wfr.strategy.elapsed_ms if _wfr.strategy else 0),
+                                                    has_reflection=bool(
+                                                        (_wfr.visual and _wfr.visual.reflected) or
+                                                        (_wfr.strategy and _wfr.strategy.reflected)
+                                                    ),
+                                                    success_confidence=_sc_val,
+                                                    has_json_error=any(
+                                                        not (r and r.success)
+                                                        for r in [_wfr.visual, _wfr.commerce, _wfr.compliance, _wfr.strategy]
+                                                    ),
+                                                )
+                                            except Exception:
+                                                pass
                                         if _wf_result and (_wf_result.success or _wf_result.visual):
                                             try:
                                                 _history_store().save(
@@ -4603,6 +4951,34 @@ with _tab_comp:
                                         on_agent_complete=None,
                                     )
                                 _url_status.update(label="✅ 分析完成！", state="complete")
+                                # 埋点：URL 分析完成
+                                if _analytics and _wf_res_u:
+                                    try:
+                                        _wfru = _wf_res_u
+                                        _scu = int((_wfru.strategy.data.get("success_confidence") or 0) if (_wfru.strategy and _wfru.strategy.success) else 0)
+                                        _analytics.record_upload(
+                                            user_email=(st.session_state.get("user_info") or {}).get("email", ""),
+                                            image_count=1,
+                                        )
+                                        _analytics.record_analysis(
+                                            user_email=(st.session_state.get("user_info") or {}).get("email", ""),
+                                            total_ms=_wfru.total_elapsed_ms,
+                                            agent1_ms=(_wfru.visual.elapsed_ms if _wfru.visual else 0),
+                                            agent2_ms=(_wfru.commerce.elapsed_ms if _wfru.commerce else 0),
+                                            agent3_ms=(_wfru.compliance.elapsed_ms if _wfru.compliance else 0),
+                                            agent4_ms=(_wfru.strategy.elapsed_ms if _wfru.strategy else 0),
+                                            has_reflection=bool(
+                                                (_wfru.visual and _wfru.visual.reflected) or
+                                                (_wfru.strategy and _wfru.strategy.reflected)
+                                            ),
+                                            success_confidence=_scu,
+                                            has_json_error=any(
+                                                not (r and r.success)
+                                                for r in [_wfru.visual, _wfru.commerce, _wfru.compliance, _wfru.strategy]
+                                            ),
+                                        )
+                                    except Exception:
+                                        pass
                             except Exception as _ue:
                                 _url_status.update(label=f"❌ 分析失败：{_ue}", state="error")
                                 _wf_res_u = None
@@ -4746,6 +5122,15 @@ with _tab_comp:
             _pdf_bytes = build_pdf(_md_report)
             _report_stem = Path(st.session_state.image_name or "report").stem
 
+            def _on_export_click():
+                if _analytics:
+                    try:
+                        _analytics.record_export(
+                            user_email=(st.session_state.get("user_info") or {}).get("email", "")
+                        )
+                    except Exception:
+                        pass
+
             if _pdf_bytes:
                 st.download_button(
                     "⬇️ 导出 PDF",
@@ -4754,6 +5139,7 @@ with _tab_comp:
                     mime="application/pdf",
                     use_container_width=True,
                     key="export_pdf",
+                    on_click=_on_export_click,
                 )
             else:
                 st.download_button(
@@ -4763,6 +5149,7 @@ with _tab_comp:
                     mime="text/markdown",
                     use_container_width=True,
                     key="export_md",
+                    on_click=_on_export_click,
                 )
 
         # ── 批量结果导航（仅当批量分析了多张时显示）────────────────────────────────
@@ -4781,14 +5168,14 @@ with _tab_comp:
                 _br       = _bitem.get("result")
                 _is_cur   = (_bitem["name"] == st.session_state.image_name)
                 _conf     = (
-                    _br.strategy.data.get("confidence_score", "?")
+                    _br.strategy.data.get("success_confidence", "?")
                     if _br and _br.strategy and _br.strategy.success else "?"
                 )
                 _risk     = (
                     _br.compliance.data.get("risk_level", "?")
                     if _br and _br.compliance and _br.compliance.success else "?"
                 )
-                _risk_clr = {"LOW": "#00C97A", "MEDIUM": "#F0A500", "HIGH": "#FF3D55"}.get(
+                _risk_clr = {"低": "#00C97A", "中": "#F0A500", "高": "#FF3D55"}.get(
                     str(_risk), "#7C8FA6"
                 )
                 _border   = (
@@ -4875,26 +5262,58 @@ with _tab_comp:
 
         if _d_co:
             _s1c, _s2c = st.columns(2)
-            _s1c.metric("病毒传播潜力", f"{_d_co.get('virality_score','—')}/100")
-            _s2c.metric("商业转化潜力", f"{_d_co.get('conversion_potential','—')}/100")
-            if _d_co.get("rag_references"):
-                with st.expander("📚 已调用 RAG 知识库片段"):
-                    for _ref in _d_co["rag_references"]:
-                        st.markdown(
-                            f'<div style="background:rgba(168,85,247,.06);border-left:2px solid #A855F7;'
-                            f'border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:12px;'
-                            f'color:#7C8FA6;">{_ref}</div>',
-                            unsafe_allow_html=True
-                        )
-            if _d_co.get("optimization_summary"):
+            _s1c.metric("综合转化潜力", f"{_d_co.get('conversion_score','—')}/10")
+            _s2c.metric("最佳切入角度", _d_co.get('best_angle', '—')[:20] + ("…" if len(_d_co.get('best_angle','')) > 20 else ""))
+            if _d_co.get("best_angle"):
                 st.markdown(
                     f'<div class="glass" style="margin-bottom:12px;">'
                     f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                    f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:6px;">// 优化逻辑</div>'
+                    f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:6px;">// 最佳切入角度</div>'
                     f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
-                    f'{_d_co.get("optimization_summary","—")}</div></div>',
+                    f'{_d_co.get("best_angle","—")}</div></div>',
                     unsafe_allow_html=True
                 )
+
+            # ── RAG 向量检索参考（让用户看到知识库在起作用）─────────────────────
+            _rag_hits = getattr(wf, "rag_hits", []) or []
+            if _rag_hits:
+                with st.expander(
+                    f"🔍 RAG 知识库参考（已检索到 {len(_rag_hits)} 条语义匹配，text-embedding-3-small）",
+                    expanded=False,
+                ):
+                    st.markdown(
+                        '<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                        'letter-spacing:.14em;color:#A855F7;margin-bottom:10px;">'
+                        '// Agent 2 脚本生成时参考的品牌知识库条目</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _ri, _hit in enumerate(_rag_hits):
+                        _score = _hit.get("score", 0)
+                        _pct   = int(_score * 100)
+                        _bar_clr = (
+                            "#00C97A" if _score >= 0.75
+                            else "#F0A500" if _score >= 0.55
+                            else "#818CF8"
+                        )
+                        st.markdown(
+                            f'<div style="background:rgba(168,85,247,.05);border:1px solid '
+                            f'rgba(168,85,247,.18);border-left:3px solid {_bar_clr};'
+                            f'border-radius:10px;padding:12px 16px;margin-bottom:8px;">'
+                            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">'
+                            f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;'
+                            f'color:#7C8FA6;">#{_ri+1:02d}</span>'
+                            f'<div style="flex:1;height:4px;background:rgba(255,255,255,.06);'
+                            f'border-radius:2px;overflow:hidden;">'
+                            f'<div style="width:{_pct}%;height:100%;background:{_bar_clr};'
+                            f'border-radius:2px;"></div></div>'
+                            f'<span style="font-size:11px;font-weight:700;color:{_bar_clr};'
+                            f'font-family:\'DM Mono\',monospace;">{_pct}%</span>'
+                            f'</div>'
+                            f'<div style="font-size:12px;color:#CBD5E1;line-height:1.7;">'
+                            f'{_hit.get("text","")}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
             _scripts = _d_co.get("scripts", [])
             _target_platforms_co = (
@@ -5157,24 +5576,37 @@ with _tab_comp:
                 )
                 if wf.visual and wf.visual.success:
                     d = wf.visual.data
+                    # ── Self-Reflection 标识 ────────────────────────────────
+                    if wf.visual.reflected:
+                        st.markdown(
+                            '<div style="display:inline-flex;align-items:center;gap:6px;'
+                            'background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.35);'
+                            'border-radius:20px;padding:4px 12px;margin-bottom:10px;">'
+                            '<span style="font-size:11px;">✦</span>'
+                            '<span style="font-family:\'DM Mono\',monospace;font-size:9px;'
+                            'letter-spacing:.12em;color:#818CF8;">SELF-REFLECTION · 已修正</span>'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                        if wf.visual.critic_issues:
+                            with st.expander("查看 Critic 发现的原始问题", expanded=False):
+                                for _ci in wf.visual.critic_issues:
+                                    st.markdown(
+                                        f'<div style="font-size:12px;color:#7C8FA6;'
+                                        f'padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">'
+                                        f'<span style="color:#F0A500;">·</span> {_ci}</div>',
+                                        unsafe_allow_html=True,
+                                    )
                     st.metric("Hook 类型", d.get("hook_type", "—"))
                     s1, s2 = st.columns(2)
-                    s1.metric("Hook 评分", f"{d.get('hook_score','—')}/100")
-                    s2.metric("视觉质量", f"{d.get('visual_score','—')}/100")
+                    s1.metric("Hook 评分", f"{d.get('hook_score','—')}/10")
+                    s2.metric("情绪基调", d.get("emotion_tone", "—"))
                     st.markdown(
                         f'<div class="glass" style="margin-top:10px;">'
                         f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                        f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 情绪基调</div>'
-                        f'<div style="color:#E2E8F0;font-size:13px;">{d.get("emotional_tone","—")}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
-                    st.markdown(
-                        f'<div class="glass">'
-                        f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
-                        f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 前3秒分析</div>'
-                        f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
-                        f'{d.get("first_3s_analysis","—")}</div>'
+                        f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:8px;">// 最大短板</div>'
+                        f'<div style="color:#F0A500;font-size:13px;line-height:1.75;">'
+                        f'{d.get("weakness","—")}</div>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
@@ -5217,11 +5649,11 @@ with _tab_comp:
                 if wf.compliance and wf.compliance.success:
                     d    = wf.compliance.data
                     risk = d.get("risk_level", "—")
-                    risk_clr = {"LOW": "#00C97A", "MEDIUM": "#F0A500", "HIGH": "#FF3D55"}.get(risk, "#7C8FA6")
-                    risk_bg  = {"LOW": "rgba(0,201,122,.1)", "MEDIUM": "rgba(240,165,0,.1)",
-                                "HIGH": "rgba(255,61,85,.1)"}.get(risk, "rgba(255,255,255,.04)")
-                    risk_bd  = {"LOW": "rgba(0,201,122,.3)", "MEDIUM": "rgba(240,165,0,.3)",
-                                "HIGH": "rgba(255,61,85,.3)"}.get(risk, "rgba(255,255,255,.08)")
+                    risk_clr = {"低": "#00C97A", "中": "#F0A500", "高": "#FF3D55"}.get(risk, "#7C8FA6")
+                    risk_bg  = {"低": "rgba(0,201,122,.1)", "中": "rgba(240,165,0,.1)",
+                                "高": "rgba(255,61,85,.1)"}.get(risk, "rgba(255,255,255,.04)")
+                    risk_bd  = {"低": "rgba(0,201,122,.3)", "中": "rgba(240,165,0,.3)",
+                                "高": "rgba(255,61,85,.3)"}.get(risk, "rgba(255,255,255,.08)")
                     st.markdown(
                         f'<div style="display:inline-flex;align-items:center;gap:8px;'
                         f'background:{risk_bg};border:1px solid {risk_bd};border-radius:8px;'
@@ -5232,54 +5664,40 @@ with _tab_comp:
                         f'</div>',
                         unsafe_allow_html=True
                     )
-                    st.metric("合规评分", f"{d.get('compliance_score','—')}/100")
-                    if d.get("_risk_dict_categories"):
-                        st.markdown(
-                            f'<div style="font-size:10px;color:#3D4F68;font-family:\'DM Mono\','
-                            f'monospace;margin:6px 0 10px;">📖 已扫描 {d.get("_total_rules",0)} 条规则 · '
-                            f'{len(d["_risk_dict_categories"])} 个类别</div>',
-                            unsafe_allow_html=True
-                        )
-                    violations = d.get("violations", [])
-                    if violations:
+                    violation_keywords = d.get("violation_keywords", [])
+                    if violation_keywords:
                         st.markdown(
                             '<div style="font-size:11px;font-family:\'DM Mono\',monospace;'
-                            'letter-spacing:.12em;color:#FF3D55;margin-bottom:8px;">// 命中风险项</div>',
+                            'letter-spacing:.12em;color:#FF3D55;margin-bottom:8px;">// 违规关键词</div>',
                             unsafe_allow_html=True
                         )
-                        for v in violations:
-                            sev  = v.get("severity", "LOW")
-                            vclr = {"HIGH": "#FF3D55", "MEDIUM": "#F0A500", "LOW": "#F0A500"}.get(sev, "#7C8FA6")
-                            vbg  = {"HIGH": "rgba(255,61,85,.07)", "MEDIUM": "rgba(240,165,0,.07)",
-                                    "LOW": "rgba(240,165,0,.07)"}.get(sev, "rgba(255,255,255,.03)")
-                            vbd  = {"HIGH": "rgba(255,61,85,.3)", "MEDIUM": "rgba(240,165,0,.3)",
-                                    "LOW": "rgba(240,165,0,.25)"}.get(sev, "rgba(255,255,255,.08)")
-                            st.markdown(
-                                f'<div style="background:{vbg};border:1px solid {vbd};'
-                                f'border-left:3px solid {vclr};border-radius:10px;'
-                                f'padding:12px 16px;margin-bottom:8px;">'
-                                f'<div style="color:{vclr};font-family:\'DM Mono\',monospace;'
-                                f'font-size:10px;margin-bottom:4px;">[{v.get("type","—")}] · {sev}</div>'
-                                f'<div style="color:#E2E8F0;font-size:13px;margin-bottom:4px;">'
-                                f'{v.get("text","")}</div>'
-                                f'<div style="color:#7C8FA6;font-size:11px;">建议：{v.get("suggestion","—")}</div>'
-                                f'</div>',
-                                unsafe_allow_html=True
-                            )
+                        kw_html = "".join(
+                            f'<span style="display:inline-block;background:rgba(255,61,85,.10);'
+                            f'border:1px solid rgba(255,61,85,.30);border-radius:6px;'
+                            f'padding:3px 10px;margin:3px 4px 3px 0;font-size:12px;color:#FF3D55;">'
+                            f'{kw}</span>'
+                            for kw in violation_keywords
+                        )
+                        st.markdown(
+                            f'<div style="margin-bottom:10px;">{kw_html}</div>',
+                            unsafe_allow_html=True
+                        )
                     else:
                         st.markdown(
                             '<div style="background:rgba(0,201,122,.08);border:1px solid rgba(0,201,122,.25);'
                             'border-radius:10px;padding:12px 16px;color:#00C97A;font-size:13px;">'
-                            '✓ 未命中任何风控规则，可安全发布</div>',
+                            '✓ 未发现违规关键词，可安全发布</div>',
                             unsafe_allow_html=True
                         )
-                    pn = d.get("platform_notes", {})
-                    if any(pn.values()):
-                        with st.expander("📋 平台专项说明"):
-                            if pn.get("tiktok"):
-                                st.markdown(f"**TikTok：** {pn['tiktok']}")
-                            if pn.get("douyin"):
-                                st.markdown(f"**抖音：** {pn['douyin']}")
+                    if d.get("suggestion"):
+                        st.markdown(
+                            f'<div class="glass" style="margin-top:10px;">'
+                            f'<div style="font-size:9px;font-family:\'DM Mono\',monospace;'
+                            f'letter-spacing:.14em;color:#7C8FA6;margin-bottom:6px;">// 整改建议</div>'
+                            f'<div style="color:#7C8FA6;font-size:13px;line-height:1.75;">'
+                            f'{d["suggestion"]}</div></div>',
+                            unsafe_allow_html=True
+                        )
                     fk = f"c_{st.session_state.session_id}"
                     if fk not in st.session_state.feedback_done:
                         fa, fb, _ = st.columns([1, 1, 6])
@@ -5315,36 +5733,17 @@ with _tab_comp:
                         f'// AGENT 5 · 爆款公式提炼师 · {_sd.get("sample_count","?")} 个样本</div>'
                         f'<div style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:20px;'
                         f'font-weight:800;color:#E2E8F0;margin-bottom:10px;">'
-                        f'{_sd.get("viral_formula","—")}</div>'
+                        f'{_sd.get("formula_name","—")}</div>'
                         f'<div style="font-size:13px;color:#7C8FA6;line-height:1.8;">'
-                        f'{_sd.get("executive_summary","—")}</div></div>',
+                        f'{_sd.get("core_pattern","—")}</div></div>',
                         unsafe_allow_html=True
                     )
-                    _hp = _sd.get("hook_patterns", [])
-                    if _hp:
-                        st.markdown(
-                            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin-bottom:10px;">🎣 Hook 规律</div>',
-                            unsafe_allow_html=True
-                        )
-                        _hcols = st.columns(min(len(_hp), 3))
-                        for _hi, _h in enumerate(_hp):
-                            with _hcols[_hi % 3]:
-                                st.markdown(
-                                    f'<div class="glass" style="text-align:center;padding:16px;">'
-                                    f'<div style="font-size:22px;font-weight:800;color:#818CF8;'
-                                    f'font-family:\'Plus Jakarta Sans\',sans-serif;">{_h.get("frequency","?")}次</div>'
-                                    f'<div style="font-size:12px;font-weight:700;color:#E2E8F0;margin:4px 0;">{_h.get("pattern","—")}</div>'
-                                    f'<div style="font-size:11px;color:#7C8FA6;">{_h.get("example","—")}</div>'
-                                    f'</div>',
-                                    unsafe_allow_html=True
-                                )
                     st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
-                    _c1, _c2, _c3 = st.columns(3)
+                    _c1, _c2 = st.columns(2)
                     for _col, (_ttl, _clr, _items) in zip(
-                        [_c1, _c2, _c3],
-                        [("👁 视觉规律", "#38BDF8", _sd.get("visual_rules", [])),
-                         ("📈 转化洞察", "#A855F7", _sd.get("conversion_insights", [])),
-                         ("🛡 合规注意", "#F43F5E", _sd.get("compliance_watch", []))]
+                        [_c1, _c2],
+                        [("🔁 可复用元素", "#38BDF8", _sd.get("reusable_elements", [])),
+                         ("🎯 适用场景",   "#A855F7", _sd.get("applicable_scenarios", []))]
                     ):
                         with _col:
                             st.markdown(
@@ -5358,29 +5757,19 @@ with _tab_comp:
                                     f'<span style="font-size:12px;color:#7C8FA6;">{_itm}</span></div>',
                                     unsafe_allow_html=True
                                 )
-                    _recs = _sd.get("top_recommendations", [])
-                    if _recs:
+                    _cw = _sd.get("compliance_watch", [])
+                    if _cw:
                         st.markdown(
-                            '<div style="font-size:15px;font-weight:700;color:#E2E8F0;margin:16px 0 10px;">⚡ 优先行动建议</div>',
+                            '<div style="font-size:13px;font-weight:700;color:#E2E8F0;margin:12px 0 8px;">🛡 合规注意事项</div>',
                             unsafe_allow_html=True
                         )
-                        for _r in sorted(_recs, key=lambda x: x.get("priority", 9)):
-                            _pri = _r.get("priority", "?")
+                        for _itm in _cw:
                             st.markdown(
-                                f'<div class="glass" style="padding:14px 18px;margin-bottom:8px;border-left:3px solid #6366F1;">'
-                                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
-                                f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:#818CF8;'
-                                f'background:rgba(99,102,241,.12);padding:2px 8px;border-radius:4px;">P{_pri}</span>'
-                                f'<span style="font-size:13px;font-weight:700;color:#E2E8F0;">{_r.get("action","—")}</span>'
-                                f'</div>'
-                                f'<div style="font-size:11px;color:#7C8FA6;">{_r.get("reason","—")}</div>'
-                                f'</div>',
+                                f'<div class="glass" style="padding:8px 12px;margin-bottom:6px;">'
+                                f'<span style="color:#F43F5E;font-size:10px;">·</span> '
+                                f'<span style="font-size:12px;color:#7C8FA6;">{_itm}</span></div>',
                                 unsafe_allow_html=True
                             )
-                    _md_doc = _sd.get("methodology_doc", "")
-                    if _md_doc:
-                        with st.expander("📄 完整方法论文档（可复制给团队）"):
-                            st.markdown(_md_doc)
 
         st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
 
@@ -5408,12 +5797,11 @@ with _tab_comp:
                         })
 
             if wf.compliance and wf.compliance.success:
-                _viol_list = wf.compliance.data.get("violations", [])
-                if _viol_list:
-                    _v0 = _viol_list[0]
+                _viol_kws = wf.compliance.data.get("violation_keywords", [])
+                if _viol_kws:
                     _today_tasks.append({
-                        "action": f"把「{_v0.get('text','高风险词')}」改成安全表达",
-                        "reason": _v0.get("suggestion", "避免内容审核不通过"),
+                        "action": f"把违规词「{_viol_kws[0]}」改成安全表达",
+                        "reason": wf.compliance.data.get("suggestion", "避免内容审核不通过"),
                     })
                 else:
                     _today_tasks.append({
@@ -5422,10 +5810,10 @@ with _tab_comp:
                     })
 
             if wf.strategy and wf.strategy.success:
-                _ki = wf.strategy.data.get("key_insights", [])
-                if _ki:
+                _imps = wf.strategy.data.get("top3_improvements", [])
+                if _imps:
                     _today_tasks.append({
-                        "action": _ki[0],
+                        "action": _imps[0],
                         "reason": "来自 Agent 4 策略执行官的核心战略判断，优先执行",
                     })
 

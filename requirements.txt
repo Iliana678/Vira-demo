@@ -16,6 +16,9 @@ Pillow>=10.3.0          # PIL.Image — 上传图片校验与缩略图渲染
 numpy>=1.26.0           # TF-IDF 向量矩阵运算
 scikit-learn>=1.5.0     # TfidfVectorizer + cosine_similarity
 
+# ── 数据分析（管理员后台图表）──────────────────────────────────────────────
+pandas>=2.0.0           # 管理员后台 DataFrame + 图表数据
+
 # ── 工具 ────────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.1    # load_dotenv()（本地 .env；云端由 Secrets 注入）
 nest-asyncio>=1.6.0     # asyncio.run() 嵌套兼容（Streamlit 同步上下文）

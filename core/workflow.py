@@ -23,7 +23,7 @@ core/workflow.py
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field  # field used for WorkflowResult.rag_hits default_factory
 from typing import Callable, Optional
 
 import nest_asyncio
@@ -57,6 +57,10 @@ class WorkflowResult:
     commerce:   Optional[AgentResult] = None
     compliance: Optional[AgentResult] = None
     strategy:   Optional[AgentResult] = None  # Agent 4 最终裁决
+
+    # RAG 向量检索命中结果：List[{"text": str, "score": float}]
+    # 由 Agent 2 调用 build_context() 后从 RAGService.last_hits 采集
+    rag_hits: list = field(default_factory=list)
 
     total_elapsed_ms: int = 0
     total_tokens: int = 0
@@ -93,7 +97,7 @@ class VIRAWorkflow:
     def __init__(self, api_key: str, model: str = "gpt-4o", rag_text: str = "", brand_context: str = ""):
         # 单 client 实例，openai SDK 内部 httpx 连接池线程安全
         self.client        = OpenAIClient(api_key=api_key, model=model)
-        self.rag           = RAGService(knowledge_text=rag_text)
+        self.rag           = RAGService(knowledge_text=rag_text, api_key=api_key)
         self.brand_context = brand_context
 
         self.agent_visual     = VisualAnalystAgent(self.client)
@@ -173,7 +177,13 @@ class VIRAWorkflow:
                 brand_context=self.brand_context,
             )
 
-            logger.info("Phase2 done | commerce.ok=%s", result.commerce.success)
+            # 采集 RAG 向量检索命中结果（透传给 UI 展示）
+            result.rag_hits = list(self.rag.last_hits)
+
+            logger.info(
+                "Phase2 done | commerce.ok=%s rag_hits=%d",
+                result.commerce.success, len(result.rag_hits),
+            )
             if on_agent_complete:
                 on_agent_complete("commerce", result.commerce)
 
@@ -188,7 +198,7 @@ class VIRAWorkflow:
             logger.info(
                 "Phase3 done | strategy.ok=%s confidence=%s",
                 result.strategy.success,
-                result.strategy.data.get("confidence_score") if result.strategy.success else "—",
+                result.strategy.data.get("success_confidence") if result.strategy.success else "—",
             )
             if on_agent_complete:
                 on_agent_complete("strategy", result.strategy)
