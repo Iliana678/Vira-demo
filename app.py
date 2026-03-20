@@ -1332,7 +1332,7 @@ def _render_auth_page() -> None:
     background: rgba(255,255,255,.82) !important;
     border: 1px solid rgba(139,92,246,.18) !important;
     border-radius: 20px !important;
-    padding: 32px 30px 24px !important;
+    padding: 28px !important;
     backdrop-filter: blur(40px) !important;
     -webkit-backdrop-filter: blur(40px) !important;
     box-shadow: 0 20px 64px rgba(99,102,241,.14),
@@ -1340,6 +1340,12 @@ def _render_auth_page() -> None:
                 inset 0 1px 0 rgba(255,255,255,.9) !important;
     animation: vira-fade-up .5s ease both !important;
 }
+/* 表单内子元素间距压缩 */
+[data-testid="stForm"] [data-testid="stTextInput"],
+[data-testid="stForm"] [data-testid="stSelectbox"] {
+    margin-bottom: 0 !important;
+}
+[data-testid="stForm"] > div { gap: 12px !important; }
 
 /* 表单内文字适配浅色背景 */
 [data-testid="stForm"] label p,
@@ -1415,8 +1421,8 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
 
     # ── Logo + 标题 ────────────────────────────────────────────────────────────
     st.markdown(f"""
-<div style="text-align:center;padding:52px 0 24px;animation:vira-fade-up .6s ease both;">
-  <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 18px;
+<div style="text-align:center;padding:32px 0 14px;animation:vira-fade-up .6s ease both;">
+  <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 12px;
               background:linear-gradient(135deg,#818CF8 0%,#C084FC 100%);
               display:inline-flex;align-items:center;justify-content:center;
               box-shadow:0 8px 32px rgba(129,140,248,.4);
@@ -1437,14 +1443,9 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
     # ── 消息槽（表单上方，渲染错误/成功提示）─────────────────────────────────
     _msg_slot = st.empty()
 
-    # ── 返回首页链接 ────────────────────────────────────────────────────────
+    # ── 返回首页链接（仅文字版，不用按钮）──────────────────────────────────
     st.markdown('<div class="vira-back-home"><a href="#" onclick="window.location.reload()">← 返回首页</a></div>',
                 unsafe_allow_html=True)
-    _back_col1, _back_col2, _back_col3 = st.columns([1, 2, 1])
-    with _back_col2:
-        if st.button("← 返回首页", key="back_to_landing", use_container_width=False):
-            st.session_state.landing_passed = False
-            st.rerun()
 
     # ── 登录表单 ────────────────────────────────────────────────────────────
     if not is_signup:
@@ -1476,43 +1477,12 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
                     _msg_slot.error(f"服务暂不可用：{_e}")
 
         # 忘记密码 ────────────────────────────────────────────────────────────
-        _, _fp_mid, _ = st.columns([1, 2, 1])
-        with _fp_mid:
-            with st.expander("忘记密码？", expanded=False):
-                st.markdown(
-                    "<p style='font-size:12px;color:#6B7280;margin-bottom:8px;'>"
-                    "通过邮箱直接重置密码（无需邮件验证）</p>",
-                    unsafe_allow_html=True,
-                )
-                _fp_email = st.text_input("注册邮箱", placeholder="name@example.com",
-                                          key="fp_email")
-                _fp_pwd   = st.text_input("新密码", placeholder="至少 6 位",
-                                          type="password", key="fp_pwd")
-                _fp_pwd2  = st.text_input("确认新密码", placeholder="再输入一次",
-                                          type="password", key="fp_pwd2")
-                if st.button("确认重置密码", use_container_width=True, key="fp_submit"):
-                    if not _fp_email or not _fp_pwd:
-                        st.error("请填写邮箱和新密码")
-                    elif _fp_pwd != _fp_pwd2:
-                        st.error("两次密码不一致")
-                    elif len(_fp_pwd) < 6:
-                        st.error("密码至少 6 位")
-                    else:
-                        try:
-                            from services.auth import reset_password as _auth_reset
-                            _rk, _rm = _auth_reset(_fp_email, _fp_pwd)
-                            if _rk:
-                                st.success("✅ 密码已重置，请重新登录")
-                            else:
-                                st.error(_rm)
-                        except Exception as _e:
-                            st.error(f"服务暂不可用：{_e}")
-                st.markdown(
-                    "<p style='font-size:11px;color:#9CA3AF;margin-top:10px;text-align:center;'>"
-                    "如仍有问题，请联系 <a href='mailto:support@vira.ai' "
-                    "style='color:#6366F1;'>support@vira.ai</a></p>",
-                    unsafe_allow_html=True,
-                )
+        st.markdown("""
+<p style="text-align:center; font-size:12px; color:#94A3B8; margin-top:8px;">
+忘记密码？联系
+<a href="mailto:support@vira.ai" style="color:#6366F1; text-decoration:none;">support@vira.ai</a>
+</p>
+""", unsafe_allow_html=True)
 
         st.markdown('<div class="vira-auth-switch">', unsafe_allow_html=True)
         _, _mid, _ = st.columns([1, 2, 1])
@@ -1577,34 +1547,14 @@ button[data-testid="baseButton-primaryFormSubmit"]:hover,
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ── 页脚 + 隐私政策 ────────────────────────────────────────────────────────
-    _, _pp_mid, _ = st.columns([1, 2, 1])
-    with _pp_mid:
-        with st.expander("📄 隐私政策 & 使用条款", expanded=False):
-            st.markdown("""
-**VIRA 隐私政策**（最后更新：2026 年 3 月）
-
-**我们收集哪些信息**
-- 注册时填写的邮箱地址和昵称
-- 使用记录（分析次数、日期），用于额度管理
-- 你上传的图片/视频仅在分析期间临时处理，不永久存储
-
-**如何使用这些信息**
-- 提供账户服务和额度管理
-- 偶尔发送产品更新通知（仅限注册邮箱）
-- 不用于广告投放，不向任何第三方出售
-
-**数据安全**
-- 密码经过 PBKDF2-SHA256 加盐哈希后存储，明文不保留
-- API 密钥仅保存在服务器环境变量中，不记录在任何日志
-
-**你的权利**
-- 可随时通过 support@vira.ai 申请删除账户和所有数据
-
-**联系我们**：support@vira.ai
-
----
-*使用 VIRA 即表示你已阅读并同意本政策。*
-""")
+    st.markdown("""
+<p style="text-align:center; font-size:11px; color:#94A3B8; margin-top:24px;">
+使用即代表同意
+<a href="#" style="color:#6366F1; text-decoration:none;">隐私政策</a>
+与
+<a href="#" style="color:#6366F1; text-decoration:none;">使用条款</a>
+</p>
+""", unsafe_allow_html=True)
     st.markdown(
         "<div style='text-align:center;margin-top:8px;font-size:11px;color:#9CA3AF;"
         "padding-bottom:40px;'>© 2026 VIRA · 保留所有权利</div>",
@@ -4361,7 +4311,7 @@ with _tab_comp:
         _tab_img, _tab_url, _tab_vid = st.tabs([
             "📷  上传截图",
             "🔗  粘贴链接",
-            "🎬  上传视频  ·  即将上线",
+            "🎬  上传视频  ·  Gemini 1.5 Pro",
         ])
 
         # ── Tab 1：截图上传（主推）────────────────────────────────────────────────
@@ -5012,59 +4962,297 @@ with _tab_comp:
 
         # ── Tab 3：视频上传（即将上线）────────────────────────────────────────────
         with _tab_vid:
-            st.markdown("""
-    <div style="text-align:center;padding:40px 20px 20px;">
-      <div style="font-size:2.5rem;margin-bottom:16px;">🎬</div>
-      <div style="font-size:1.1rem;font-weight:700;color:#E2E8F0;margin-bottom:8px;">
-        视频分析功能即将上线
-      </div>
-      <div style="font-size:.85rem;color:#6B7280;margin-bottom:6px;">
-        即将支持 mp4 / mov，自动提取口播文案 + 帧级竞品分析
-      </div>
-      <div style="display:inline-flex;align-items:center;gap:6px;
-                  background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);
-                  border-radius:99px;padding:4px 14px;margin-bottom:28px;">
-        <span style="width:6px;height:6px;border-radius:50%;background:#FCD34D;
-                     display:inline-block;animation:lp-pulse 1.4s ease-in-out infinite;"></span>
-        <span style="font-size:11px;color:#FCD34D;font-family:'DM Mono',monospace;
-                     letter-spacing:.08em;">BETA · 内测阶段开发中</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-            if st.session_state.get("video_waitlist_submitted"):
-                st.success("✅ 已记录！功能上线时我们会第一时间通知你。")
-            else:
-                with st.form("video_waitlist_form"):
-                    st.markdown(
-                        '<div style="text-align:center;font-size:.82rem;color:#94A3B8;margin-bottom:10px;">'
-                        '留下邮箱，视频功能上线时优先内测</div>',
-                        unsafe_allow_html=True,
-                    )
-                    _wl_email = st.text_input(
-                        "邮箱",
-                        value=st.session_state.get("video_waitlist_email", ""),
-                        placeholder="your@email.com",
-                        label_visibility="collapsed",
-                    )
-                    _wl_submit = st.form_submit_button(
-                        "提前获得内测资格 →",
-                        use_container_width=True,
-                        type="primary",
-                    )
-                    if _wl_submit:
-                        if _wl_email.strip() and "@" in _wl_email:
-                            st.session_state.video_waitlist_email     = _wl_email.strip()
-                            st.session_state.video_waitlist_submitted = True
-                            st.rerun()
-                        else:
-                            st.error("请输入有效邮箱")
-
+            # ── 双模型架构说明 ────────────────────────────────────────────────
             st.markdown(
-                '<div style="text-align:center;font-size:.75rem;color:#374151;margin-top:16px;">'
-                '当前请使用「📷 上传截图」进行竞品分析</div>',
+                '<div style="display:flex;align-items:center;gap:8px;'
+                'background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.18);'
+                'border-radius:10px;padding:10px 14px;margin-bottom:16px;">'
+                '<span style="font-size:18px;">🎬</span>'
+                '<div>'
+                '<div style="font-size:12px;font-weight:700;color:#E2E8F0;">'
+                'Gemini 1.5 Pro × GPT-4o 双模型分析</div>'
+                '<div style="font-size:11px;color:#64748B;margin-top:2px;">'
+                '视频由 Gemini 1.5 Pro 解析 → 结构化描述注入 VIRA 四路 Agent 流水线</div>'
+                '</div></div>',
                 unsafe_allow_html=True,
             )
+
+            # ── Gemini API Key 状态检查 ───────────────────────────────────────
+            try:
+                from services.gemini_client import get_gemini_api_key as _get_gkey
+                _gkey_ok = bool(_get_gkey())
+            except Exception:
+                _gkey_ok = False
+
+            if not _gkey_ok:
+                st.warning(
+                    "⚠️ 未检测到 **GEMINI_API_KEY**。\n\n"
+                    "请在 `.streamlit/secrets.toml` 或环境变量中添加：\n"
+                    "```\nGEMINI_API_KEY = \"your-gemini-key\"\n```",
+                )
+
+            # ── 视频上传控件 ──────────────────────────────────────────────────
+            _MAX_VIDEO_MB = 50
+            _vid_file = st.file_uploader(
+                f"上传竞品视频（MP4 · MOV · 最大 {_MAX_VIDEO_MB} MB）",
+                type=["mp4", "mov", "m4v"],
+                accept_multiple_files=False,
+                key="video_uploader_main",
+                disabled=not _gkey_ok,
+            )
+
+            if _vid_file:
+                _vid_bytes = _vid_file.read()
+                _vid_size_mb = len(_vid_bytes) / 1024 / 1024
+
+                if _vid_size_mb > _MAX_VIDEO_MB:
+                    st.error(
+                        f"❌ 文件大小 {_vid_size_mb:.1f} MB 超过 {_MAX_VIDEO_MB} MB 限制，"
+                        "请压缩后重试。"
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="font-size:11px;color:#64748B;margin:4px 0 12px;">'
+                        f'📎 {_vid_file.name} &nbsp;·&nbsp; {_vid_size_mb:.1f} MB</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # ── 品牌上下文（与图片 tab 保持一致）─────────────────────
+                    from services.brand_kb import format_brand_context as _fmt_brand_v
+                    _active_bp_v = st.session_state.get("brand_profile")
+                    _brand_ctx_v = _fmt_brand_v(_active_bp_v) if _active_bp_v else ""
+
+                    _btn_vid_txt = (
+                        f"✦ 开始视频分析，生成「{_active_bp_v.get('brand_name','')}」专属脚本 →"
+                        if _active_bp_v and _active_bp_v.get("brand_name")
+                        else "✦ 开始视频分析 →"
+                    )
+
+                    if st.button(
+                        _btn_vid_txt, type="primary",
+                        use_container_width=True,
+                        key="video_analyze_btn",
+                        disabled=not _gkey_ok,
+                    ):
+                        _cur_email_v = (
+                            st.session_state.get("user_info") or {}
+                        ).get("email", "")
+
+                        # 额度检查（复用图片 tab 的逻辑）
+                        try:
+                            from services.auth import (
+                                get_credits as _gcv,
+                                get_daily_status as _gdsv,
+                                deduct_credit as _dcv,
+                                increment_daily as _idv,
+                            )
+                            _credits_v = _gcv(_cur_email_v) if _cur_email_v else 1
+                            _ds_v      = _gdsv(_cur_email_v) if _cur_email_v else {}
+                        except Exception:
+                            _credits_v = 1
+                            _ds_v      = {"blocked": False, "is_pro": False}
+
+                        _is_pro_v      = _ds_v.get("is_pro", False)
+                        _daily_blk_v   = _ds_v.get("blocked", False)
+                        _no_credits_v  = (not _is_pro_v) and (_credits_v <= 0)
+
+                        if _no_credits_v:
+                            st.error("🔒 免费报告额度已用完，请升级 Pro 继续使用。")
+                        elif _daily_blk_v:
+                            st.warning("⏰ 今日素材分析额度已用完，明天零点自动重置。")
+                        else:
+                            with st.status(
+                                "🎬 视频分析中…", expanded=True
+                            ) as _vid_status:
+                                _vid_wf_result = None
+                                try:
+                                    # ── Phase 1：视频上传 → Gemini 解析 ──────
+                                    _vid_status.update(
+                                        label="📤 视频上传中 → Gemini File API…"
+                                    )
+                                    st.markdown(
+                                        '<span class="badge b-run">'
+                                        'Gemini 1.5 Pro · 视频上传中…</span>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    if _analytics:
+                                        try:
+                                            _analytics.record_upload(
+                                                _cur_email_v, image_count=1
+                                            )
+                                        except Exception:
+                                            pass
+
+                                    from services.gemini_client import analyze_video as _gem_analyze
+                                    _vid_status.update(
+                                        label="🧠 Gemini 1.5 Pro 解析中…"
+                                    )
+                                    st.markdown(
+                                        '<span class="badge b-run">'
+                                        'Gemini 1.5 Pro · 视频内容解析中…</span>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    _gemini_analysis = _gem_analyze(
+                                        _vid_bytes,
+                                        filename=_vid_file.name,
+                                    )
+                                    st.markdown(
+                                        '<span class="badge b-ok">'
+                                        'Gemini 1.5 Pro · 解析完成 ✓</span>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                    # ── Phase 2：注入 Agent 流水线 ────────────
+                                    _vid_status.update(
+                                        label="🤖 Agent 流水线分析中…"
+                                    )
+                                    st.markdown(
+                                        '<span class="badge b-run">'
+                                        'VIRA Agent · 四路分析中…</span>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                    # Gemini 分析结果作为 RAG 上下文注入
+                                    _gemini_ctx = (
+                                        "【Gemini 1.5 Pro 视频分析结果】\n"
+                                        + _gemini_analysis
+                                        + ("\n\n" + _brand_ctx_v if _brand_ctx_v else "")
+                                    )
+                                    _wfl_v = _workflow(
+                                        _gemini_ctx,
+                                        brand_context=_brand_ctx_v,
+                                    )
+                                    # 无图片帧时传 None，Agent 依赖文本上下文
+                                    _vid_wf_result = _wfl_v.run(
+                                        None,
+                                        on_agent_complete=None,
+                                    )
+
+                                    _vid_status.update(
+                                        label="✅ 分析完成！", state="complete"
+                                    )
+                                    st.markdown(
+                                        '<span class="badge b-ok">'
+                                        'VIRA Agent · 四路分析完成 ✓</span>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                except Exception as _ve:
+                                    _vid_status.update(
+                                        label=f"❌ 分析失败：{_ve}", state="error"
+                                    )
+                                    st.error(
+                                        f"视频分析出错：{_ve}\n\n"
+                                        "请检查 GEMINI_API_KEY 是否正确，"
+                                        "以及视频格式是否为 MP4/MOV。"
+                                    )
+                                    logger.error(
+                                        "Video analysis error: %s", _ve, exc_info=True
+                                    )
+
+                            if _vid_wf_result:
+                                st.session_state.workflow_result = _vid_wf_result
+                                st.session_state.image_name      = _vid_file.name
+                                st.session_state.image_data      = b""
+                                st.session_state.batch_results   = [{
+                                    "name":       _vid_file.name,
+                                    "image_data": b"",
+                                    "result":     _vid_wf_result,
+                                }]
+                                if _vid_wf_result.success:
+                                    st.session_state.all_results.append(_vid_wf_result)
+                                    st.session_state.analysis_count += 1
+                                    st.session_state.all_results = (
+                                        st.session_state.all_results[-10:]
+                                    )
+                                # 扣除额度
+                                try:
+                                    _ok_v, _rem_v = _dcv(_cur_email_v)
+                                    if _ok_v and st.session_state.get("user_info"):
+                                        st.session_state.user_info["credits"] = _rem_v
+                                    _idv(_cur_email_v)
+                                except Exception:
+                                    pass
+                                # 埋点
+                                if _analytics and _vid_wf_result:
+                                    try:
+                                        _sc_v = int(
+                                            (_vid_wf_result.strategy.data.get(
+                                                "success_confidence") or 0)
+                                            if (_vid_wf_result.strategy
+                                                and _vid_wf_result.strategy.success)
+                                            else 0
+                                        )
+                                        _analytics.record_analysis(
+                                            user_email=_cur_email_v,
+                                            total_ms=_vid_wf_result.total_elapsed_ms,
+                                            agent1_ms=(_vid_wf_result.visual.elapsed_ms
+                                                       if _vid_wf_result.visual else 0),
+                                            agent2_ms=(_vid_wf_result.commerce.elapsed_ms
+                                                       if _vid_wf_result.commerce else 0),
+                                            agent3_ms=(_vid_wf_result.compliance.elapsed_ms
+                                                       if _vid_wf_result.compliance else 0),
+                                            agent4_ms=(_vid_wf_result.strategy.elapsed_ms
+                                                       if _vid_wf_result.strategy else 0),
+                                            has_reflection=bool(
+                                                (_vid_wf_result.visual
+                                                 and _vid_wf_result.visual.reflected)
+                                                or (_vid_wf_result.strategy
+                                                    and _vid_wf_result.strategy.reflected)
+                                            ),
+                                            success_confidence=_sc_v,
+                                            has_json_error=any(
+                                                not (r and r.success)
+                                                for r in [
+                                                    _vid_wf_result.visual,
+                                                    _vid_wf_result.commerce,
+                                                    _vid_wf_result.compliance,
+                                                    _vid_wf_result.strategy,
+                                                ]
+                                            ),
+                                        )
+                                    except Exception:
+                                        pass
+                                # 保存历史
+                                try:
+                                    _history_store().save(
+                                        session_id=st.session_state.session_id,
+                                        image_name=_vid_file.name,
+                                        wf_result=_vid_wf_result,
+                                    )
+                                except Exception as _hev:
+                                    logger.warning(
+                                        "Video history save failed: %s", _hev
+                                    )
+                                st.rerun()
+
+            else:
+                # 无文件时展示功能说明
+                st.markdown(
+                    '<div style="background:rgba(99,102,241,.04);border-radius:12px;'
+                    'padding:20px 24px;margin-top:8px;">'
+                    '<div style="font-size:11px;font-family:\'DM Mono\',monospace;'
+                    'color:#818CF8;letter-spacing:.1em;margin-bottom:10px;">'
+                    '// 分析流程</div>'
+                    '<div style="display:flex;flex-direction:column;gap:8px;">'
+                    + "".join(
+                        f'<div style="display:flex;align-items:center;gap:10px;">'
+                        f'<span style="font-size:16px;">{icon}</span>'
+                        f'<div><div style="font-size:12px;font-weight:600;color:#E2E8F0;">{title}</div>'
+                        f'<div style="font-size:11px;color:#64748B;">{desc}</div></div></div>'
+                        for icon, title, desc in [
+                            ("📤", "视频上传", "MP4 / MOV · 最大 50 MB"),
+                            ("🧠", "Gemini 1.5 Pro 解析",
+                             "多模态视频理解：Hook 分析、节奏、转化力、合规风险"),
+                            ("⚡", "VIRA 四路 Agent 并发",
+                             "GPT-4o 接收 Gemini 描述，生成脚本 + 策略 + 爆款公式"),
+                            ("📊", "完整竞品报告",
+                             "与图片分析完全相同的报告格式，支持导出 PDF"),
+                        ]
+                    )
+                    + '</div></div>',
+                    unsafe_allow_html=True,
+                )
 
 
     # ══════════════════════════════════════════════════════════════════════════════
