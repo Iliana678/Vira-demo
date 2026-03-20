@@ -1994,17 +1994,17 @@ details.lp-faq p{font-size:13.5px;color:#6B7280;
       </svg>
     </div>
     <div class="lp-trust-row">
-      <div class="lp-team-badge">&#x1F6E0; 由前[行业]电商团队打造 &nbsp;&middot;&nbsp; 持续迭代中</div>
+      <div class="lp-team-badge">&#x1F6E0; 由内容创作者团队打造 &nbsp;&middot;&nbsp; 持续迭代中</div>
       <div class="lp-beta-badge"><div class="lp-beta-dot"></div>BETA &middot; 本周已迭代 3 次</div>
     </div>
     <div class="lp-badge">
       <div class="lp-badge-dot"></div>
       AI &nbsp;&middot;&nbsp; 品牌知识库 &nbsp;&middot;&nbsp; 30s 脚本生成
     </div>
-    <div class="lp-h1">上传竞品视频<br><span class="grad">30 秒生成你的下一条脚本</span></div>
+    <div class="lp-h1">上传竞品图片&amp;视频<br><span class="grad">30 秒生成你的下一条脚本</span></div>
     <div class="lp-sub">
-      VIRA 是面向 MCN 和品牌运营的 <strong>AI 内容生成工具</strong>。<br>
-      输入竞品 + 你的品牌，直接输出<strong>达人可用的拍摄脚本</strong>。
+      不只是分析工具——上传竞品，直接拿到你的下一条脚本。<br>
+      输入竞品图片&amp;视频，结合你的品牌风格，直接输出<strong>可拍摄的完整脚本</strong>。
     </div>
     <div class="lp-hero-cta-ph"></div>
   </div>
@@ -3814,7 +3814,7 @@ st.markdown("""
     而是真正看懂竞品，告诉你爆款密码在哪，<strong>你的版本怎么改</strong>。
   </p>
   <div class="vira-proof">
-    <div>🔥 <span class="vira-proof-num">2,400+</span> 创作者在用</div>
+    <div>🔥 内容创作者团队持续优化</div>
     <div>⚡ 平均 <span class="vira-proof-num">25秒</span> 出完整报告</div>
     <div>📈 完播率平均 <span class="vira-proof-num">+28%</span> 改版后</div>
   </div>
